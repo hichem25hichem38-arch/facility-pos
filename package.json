@@ -1,0 +1,95 @@
+{
+  "name": "installment-pos",
+  "private": true,
+  "version": "1.0.4",
+  "description": "Installment POS & Inventory Management System - License activation required",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src electron --ext .ts,.tsx",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "electron:dev": "concurrently \"vite --host\" \"wait-on http://localhost:5173 http://localhost:5174 --timeout 30000 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron . || cross-env VITE_DEV_SERVER_URL=http://localhost:5174 electron .\"",
+    "build:web": "vite build",
+    "build:web:full": "cross-env VITE_NO_DEMO=true VITE_IS_BETA=true VITE_BUILD_EDITION=full vite build",
+    "build:web:trial": "cross-env VITE_NO_DEMO=true VITE_IS_BETA=true VITE_BUILD_EDITION=trial vite build",
+    "build:electron": "cross-env ELECTRON_BUILD=true VITE_IS_BETA=true vite build",
+    "build:electron:full": "cross-env ELECTRON_BUILD=true VITE_NO_DEMO=true VITE_IS_BETA=true VITE_BUILD_EDITION=full vite build",
+    "build:electron:trial": "cross-env ELECTRON_BUILD=true VITE_NO_DEMO=true VITE_IS_BETA=true VITE_BUILD_EDITION=trial vite build",
+    "electron:build": "npm run electron:build:full",
+    "electron:build:full": "npm run build:electron:full && cross-env BUILD_SUFFIX=-full electron-builder",
+    "electron:build:trial": "npm run build:electron:trial && cross-env BUILD_SUFFIX=-trial electron-builder",
+    "cap:sync": "npm run build:web:full && npx cap sync android",
+    "cap:build": "npm run build:web:full && npx cap sync android && cd android && .\\gradlew assembleDebug",
+    "cap:build:full": "npm run build:web:full && npx cap sync android && cd android && .\\gradlew assembleDebug && cd .. && node -e \"const fs=require('fs');fs.copyFileSync('android/app/build/outputs/apk/debug/app-debug.apk','release/Facility-POS-'+require('./package.json').version+'-full.apk')\"",
+    "cap:build:trial": "npm run build:web:trial && npx cap sync android && cd android && .\\gradlew assembleDebug && cd .. && node -e \"const fs=require('fs');fs.copyFileSync('android/app/build/outputs/apk/debug/app-debug.apk','release/Facility-POS-'+require('./package.json').version+'-trial.apk')\""
+  },
+  "main": "electron/main/index.cjs",
+  "build": {
+    "appId": "com.store.installmentpos.client",
+    "productName": "Installment POS Client",
+    "directories": {
+      "output": "release"
+    },
+    "artifactName": "${productName} Setup ${version}${env.BUILD_SUFFIX}.${ext}",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "node_modules/**",
+      "package.json"
+    ],
+    "npmRebuild": false,
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false
+    }
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/filesystem": "^8.1.3",
+    "@capacitor/share": "^8.0.1",
+    "dexie": "^4.0.8",
+    "dexie-react-hooks": "^1.1.7",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.53.0",
+    "react-router-dom": "^6.26.2",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "xlsx": "^0.18.5",
+    "zod": "^3.23.8",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@types/node": "^22.7.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^18.3.9",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.0.1",
+    "cross-env": "^7.0.3",
+    "electron": "^32.1.2",
+    "electron-builder": "^25.1.6",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^25.0.1",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8",
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^2.1.2",
+    "wait-on": "^8.0.1"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true,
+    "electron@32.3.3": true
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "pos-sync-server",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "socket.io": "^4.8.3",
+    "ws": "^8.18.0"
+  }
+}

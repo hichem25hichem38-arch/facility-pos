@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Apex POS Studio — معاينة نقطة البيع | Apple macOS Dark</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@500;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg-main:#0f0f0f;
+  --bg-gradient: radial-gradient(820px 520px at 14% 8%, rgba(10,132,255,.13) 0%, transparent 55%), radial-gradient(760px 560px at 92% 92%, rgba(191,90,242,.10) 0%, transparent 55%), radial-gradient(600px 400px at 50% 50%, rgba(48,209,88,.06) 0%, transparent 60%), #121214;
+  --panel-bg: rgba(28,28,30,.72);
+  --panel-solid:#1c1c1e;
+  --panel-hover: rgba(44,44,46,.82);
+  --card-bg: rgba(44,44,46,.55);
+  --card-border: rgba(255,255,255,.10);
+  --input-bg: rgba(255,255,255,.07);
+  --input-border: rgba(255,255,255,.14);
+  --text-primary:#f5f5f7;
+  --text-secondary:#a1a1a6;
+  --text-muted:#8e8e93;
+  --accent-blue:#0a84ff;
+  --accent-blue-hover:#409cff;
+  --accent-green:#30d158;
+  --accent-orange:#ff9f0a;
+  --accent-red:#ff453a;
+  --accent-purple:#bf5af2;
+  --accent-cyan:#64d2ff;
+  --shadow-sm:0 4px 12px rgba(0,0,0,.28);
+  --shadow-lg:0 20px 40px rgba(0,0,0,.45);
+  --glass-blur: blur(22px) saturate(180%);
+  --radius-sm:10px;
+  --radius-md:14px;
+  --radius-lg:18px;
+  --radius-full:999px;
+  --font: 'Cairo','Tajawal', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--font);
+  background:var(--bg-main);
+  background-image:var(--bg-gradient);
+  background-attachment:fixed;
+  color:var(--text-primary);
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+a{color:inherit;text-decoration:none}
+button,input,select{font-family:inherit}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:rgba(140,140,145,.32);border-radius:999px}
+
+#app-container{display:flex;flex-direction:column;height:100vh;width:100vw}
+
+/* window bar */
+.window-bar{
+  height:48px; min-height:48px;
+  background:rgba(28,28,30,.82);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom:1px solid var(--card-border);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px; gap:12px; position:relative; z-index:100;
+}
+.window-controls{display:flex;gap:8px;align-items:center}
+.win-btn{width:12px;height:12px;border-radius:50%;border:none;cursor:pointer;box-shadow:inset 0 1px 1px rgba(255,255,255,.35), 0 1px 3px rgba(0,0,0,.25)}
+.win-btn.close{background:#ff5f57}
+.win-btn.minimize{background:#ffbd2e}
+.win-btn.maximize{background:#28c840}
+.app-title-badge{
+  position:absolute; left:50%; transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08);
+  padding:6px 14px; border-radius:999px;
+}
+.logo-icon{
+  width:26px;height:26px;border-radius:7px;
+  background: linear-gradient(135deg, #0a84ff 0%, #5e5ce6 55%, #bf5af2 100%);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;
+  box-shadow:0 4px 12px rgba(10,132,255,.35);
+}
+.app-title-badge span{font-weight:800;font-size:.92rem;letter-spacing:-.2px;white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:32vw}
+.app-title-badge span:last-child{overflow:visible; max-width:none; flex-shrink:0}
+@media (max-width:1120px){
+  .app-title-badge{position:static; transform:none; max-width:42vw}
+  .app-title-badge span{max-width:26vw}
+}
+@media (max-width:1100px){
+  .app-title-badge span:last-child{display:none}
+}
+.header-actions{display:flex;gap:8px;align-items:center}
+.theme-toggle-btn{
+  background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.10);
+  color:var(--text-primary); padding:7px 12px; border-radius:10px; font-weight:700; font-size:.82rem;
+  display:flex;align-items:center;gap:6px; cursor:pointer; transition:.2s;
+}
+.theme-toggle-btn:hover{background:rgba(255,255,255,.12); transform:translateY(-1px)}
+.theme-toggle-btn.primary{background:rgba(10,132,255,.14); border-color:rgba(10,132,255,.28); color:#8ec7ff}
+
+/* layout */
+.main-wrapper{display:flex;flex:1;overflow:hidden;min-height:0}
+.apple-sidebar{
+  width:248px; min-width:248px;
+  background:rgba(28,28,30,.66);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-left:1px solid var(--card-border);
+  display:flex;flex-direction:column;
+  padding:14px 10px; gap:2px;
+  overflow-y:auto; overflow-x:hidden;
+}
+.nav-section-title{font-size:.70rem;font-weight:800;color:var(--text-muted);letter-spacing:.6px;padding:10px 10px 6px}
+.nav-item{
+  display:flex;align-items:center;gap:12px;
+  padding:9px 10px; border-radius:12px;
+  color:var(--text-secondary); font-weight:700; font-size:.88rem;
+  transition:.22s cubic-bezier(.16,1,.3,1); position:relative; border:1px solid transparent;
+}
+.nav-item:hover{background:var(--panel-hover); color:var(--text-primary); transform:translateX(-2px)}
+.nav-item.active{background:rgba(10,132,255,.14); color:var(--text-primary); border-color:rgba(10,132,255,.22)}
+.nav-item.active::before{content:'';position:absolute;right:0;top:8px;bottom:8px;width:3px;background:var(--accent-blue);border-radius:999px}
+.nav-icon-wrapper{
+  width:34px;height:34px;min-width:34px;border-radius:9px;
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;
+  box-shadow:0 4px 10px rgba(0,0,0,.18), inset 0 1px 1px rgba(255,255,255,.22);
+}
+.nav-item[data-tab="pos"] .nav-icon-wrapper{background:linear-gradient(135deg,#0a84ff,#0040dd)}
+.nav-item[data-tab="inventory"] .nav-icon-wrapper{background:linear-gradient(135deg,#ff9f0a,#ff6a00)}
+.nav-item[data-tab="purchasing"] .nav-icon-wrapper{background:linear-gradient(135deg,#ff2d55,#b81a45)}
+.nav-item[data-tab="dashboard"] .nav-icon-wrapper{background:linear-gradient(135deg,#30d158,#1a8a34)}
+.nav-item[data-tab="history"] .nav-icon-wrapper{background:linear-gradient(135deg,#bf5af2,#6a2fb8)}
+.nav-item[data-tab="users"] .nav-icon-wrapper{background:linear-gradient(135deg,#64d2ff,#0a84ff)}
+.nav-item[data-tab="customers"] .nav-icon-wrapper{background:linear-gradient(135deg,#5e5ce6,#8a4dff)}
+.nav-item[data-tab="suppliers"] .nav-icon-wrapper{background:linear-gradient(135deg,#ac8e68,#7a5a2e)}
+.nav-item[data-tab="sales-invoices"] .nav-icon-wrapper{background:linear-gradient(135deg,#ffd60a,#ff9f0a);color:#1c1c1e}
+.nav-item[data-tab="purchase-invoices"] .nav-icon-wrapper{background:linear-gradient(135deg,#a1a1a6,#6e6e73)}
+.nav-item[data-tab="reports"] .nav-icon-wrapper{background:linear-gradient(135deg,#bf5af2,#ff2d55)}
+.nav-item[data-tab="payments"] .nav-icon-wrapper{background:linear-gradient(135deg,#30d158,#0a84ff)}
+.nav-item[data-tab="cash"] .nav-icon-wrapper{background:linear-gradient(135deg,#ff9f0a,#30d158)}
+.nav-item[data-tab="settings"] .nav-icon-wrapper{background:linear-gradient(135deg,#8e8e93,#48484a)}
+
+.sidebar-footer{
+  margin-top:auto; padding:12px; background:rgba(44,44,46,.55); border:1px solid var(--card-border);
+  border-radius:14px; display:flex;flex-direction:column;gap:8px; backdrop-filter: blur(12px);
+}
+.system-status-indicator{display:flex;align-items:center;gap:8px;font-size:.78rem;font-weight:700;color:var(--text-secondary)}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--accent-green);box-shadow:0 0 10px var(--accent-green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+.kbd-hint{font-size:.70rem;color:var(--text-muted);display:flex;align-items:center;gap:6px}
+.kbd-hint kbd{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-bottom-width:2px;padding:1px 6px;border-radius:6px;font-family:var(--mono);font-size:.68rem}
+
+/* content */
+.content-container{flex:1; min-width:0; height:100%; overflow-y:auto; padding:16px 16px 18px; display:flex; flex-direction:column}
+.view-section{animation:fadeIn .32s cubic-bezier(.16,1,.3,1)}
+@keyframes fadeIn{from{opacity:0; transform: translateY(6px) scale(.985)} to{opacity:1; transform:none}}
+
+.glass-card{
+  background:var(--panel-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border:1px solid var(--card-border);
+  border-radius:var(--radius-lg);
+  padding:16px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* POS grid */
+.pos-grid-container{
+  display:grid;
+  grid-template-columns: 1.65fr 380px;
+  gap:16px;
+  align-items:start;
+  min-height: calc(100vh - 80px);
+}
+.pos-catalog-panel{display:flex;flex-direction:column;gap:12px; min-width:0}
+.search-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.search-box{
+  position:relative; display:flex; align-items:center; width:100%; height:44px;
+  background:var(--panel-bg); border:1px solid var(--card-border); border-radius:12px;
+  backdrop-filter: blur(16px); overflow:hidden; transition:.2s;
+}
+.search-box:focus-within{border-color:rgba(10,132,255,.45); box-shadow:0 0 0 4px rgba(10,132,255,.15); background:rgba(44,44,46,.72)}
+.search-box i{
+  position:absolute; inset-inline-start:12px; font-style:normal; font-size:15px; pointer-events:none; opacity:.9;
+}
+.search-box input{
+  width:100%; background:transparent; border:none; outline:none; color:var(--text-primary);
+  padding-block:11px; padding-inline-start:40px; padding-inline-end:12px; font-size:.88rem; font-weight:600;
+}
+.search-box input::placeholder{color:var(--text-muted)}
+.search-box.scanner{border:1px solid rgba(10,132,255,.45); background:rgba(10,132,255,.08); box-shadow: inset 0 0 0 1px var(--accent-blue)}
+.search-box.scanner input{padding-inline-end:96px; padding-inline-start:40px}
+.camera-scan-btn{
+  position:absolute; inset-inline-end:6px; top:6px; bottom:6px;
+  background:linear-gradient(135deg, var(--accent-blue), #5e5ce6); color:#fff; border:none;
+  padding:0 12px; border-radius:9px; font-weight:800; font-size:.78rem; cursor:pointer;
+  display:flex;align-items:center;gap:6px; box-shadow:0 4px 10px rgba(10,132,255,.3)
+}
+.category-pills-bar{
+  display:flex;gap:8px; overflow-x:auto; padding:4px 12px 6px; scrollbar-width:thin;
+  scroll-snap-type:x proximity; -webkit-overflow-scrolling:touch;
+  mask-image: linear-gradient(to right, transparent, black 12px, black calc(100% - 12px), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 12px, black calc(100% - 12px), transparent);
+}
+.category-pill{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:7px 14px; border-radius:999px; white-space:nowrap;
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08);
+  color:var(--text-secondary); font-weight:800; font-size:.82rem; cursor:pointer; transition:.2s;
+  scroll-snap-align:start; flex-shrink:0;
+}
+.category-pill:hover{background:rgba(255,255,255,.10); color:var(--text-primary)}
+.category-pill.active{background:var(--accent-blue); color:#fff; border-color:var(--accent-blue); box-shadow:0 6px 14px rgba(10,132,255,.32)}
+.category-pill .count{background:rgba(255,255,255,.18); padding:1px 7px; border-radius:999px; font-size:.70rem; font-family:var(--mono)}
+.category-pill.active .count{background:rgba(255,255,255,.22)}
+
+.products-scroll-area{flex:1; min-height:0}
+.products-grid{display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:12px}
+
+.product-card{
+  background: rgba(44,44,46,.52);
+  backdrop-filter: blur(16px);
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:16px; padding:12px 10px 10px;
+  display:flex;flex-direction:column;align-items:center;text-align:center;
+  cursor:pointer; position:relative; transition:.22s cubic-bezier(.16,1,.3,1); overflow:hidden;
+}
+.product-card:hover{transform:translateY(-3px) scale(1.015); border-color:rgba(10,132,255,.45); box-shadow:0 14px 28px rgba(0,0,0,.32)}
+.product-card:active{transform:scale(.98)}
+.product-top-row{position:absolute; top:8px; left:8px; right:8px; display:flex; justify-content:space-between; align-items:center}
+.badge-stock{font-size:.68rem;font-weight:800;padding:3px 8px;border-radius:999px; border:1px solid transparent}
+.badge-stock.ok{background:rgba(48,209,88,.14); color:var(--accent-green); border-color:rgba(48,209,88,.22)}
+.badge-stock.low{background:rgba(255,159,10,.14); color:var(--accent-orange); border-color:rgba(255,159,10,.22)}
+.badge-stock.out{background:rgba(255,69,58,.14); color:var(--accent-red); border-color:rgba(255,69,58,.22)}
+.sku-pill{font-family:var(--mono); font-size:.62rem; letter-spacing:.3px; color:var(--text-secondary); background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.10); padding:2px 6px; border-radius:999px; font-weight:500}
+.product-icon-box{
+  width:64px;height:64px; border-radius:14px;
+  background: linear-gradient(135deg, rgba(255,255,255,.09), rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.08);
+  display:flex;align-items:center;justify-content:center; font-size:28px;
+  margin:12px 0 10px; box-shadow: inset 0 1px 1px rgba(255,255,255,.14);
+  position:relative;
+}
+.product-icon-box::after{content:''; position:absolute; inset:0; border-radius:14px; background:radial-gradient(220px 80px at 30% 20%, rgba(255,255,255,.18), transparent 60%)}
+.product-title{font-size:.86rem;font-weight:800;line-height:1.35;min-height:36px;display:flex;align-items:center;justify-content:center; color:var(--text-primary)}
+.product-meta{font-size:.72rem;color:var(--text-secondary);margin-top:4px;font-weight:600}
+.product-price{margin-top:8px; font-weight:900; font-size:1.02rem; color:var(--accent-green); letter-spacing:-.3px}
+.product-price small{font-weight:700; font-size:.72rem; color:var(--text-muted); margin-right:4px}
+.add-hint{margin-top:8px; width:100%; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.06); color:var(--text-secondary); font-weight:800; font-size:.72rem; padding:6px; border-radius:10px; transition:.2s}
+.product-card:hover .add-hint{background:var(--accent-blue); color:#fff; border-color:var(--accent-blue)}
+
+/* cart */
+.cart-panel{
+  background: rgba(28,28,30,.78);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border:1px solid var(--card-border);
+  border-radius:18px; padding:14px;
+  display:flex;flex-direction:column; gap:12px;
+  box-shadow: var(--shadow-lg);
+  position:sticky; top:16px; align-self:start; height:fit-content;
+  min-height: calc(100vh - 80px);
+}
+.cart-header{display:flex;align-items:center;justify-content:space-between; padding-bottom:12px; border-bottom:1px solid var(--card-border)}
+.cart-header h2{font-size:1.02rem;font-weight:900;display:flex;align-items:center;gap:8px}
+.cart-count{background:var(--accent-blue);color:#fff;font-family:var(--mono);font-size:.72rem;padding:3px 8px;border-radius:999px;min-width:24px;text-align:center}
+.clear-cart-btn{background:transparent;border:none;color:var(--accent-red);font-weight:800;font-size:.78rem;cursor:pointer;padding:6px 8px;border-radius:8px;transition:.2s}
+.clear-cart-btn:hover{background:rgba(255,69,58,.12)}
+
+.cart-items-list{flex:1; overflow-y:auto; display:flex;flex-direction:column; gap:10px; padding:2px 0; min-height:220px}
+.cart-item{
+  background: rgba(44,44,46,.62); border:1px solid rgba(255,255,255,.08);
+  border-radius:14px; padding:10px 11px; display:flex; align-items:center; gap:10px;
+  animation: slideIn .22s cubic-bezier(.16,1,.3,1);
+}
+@keyframes slideIn{from{opacity:0; transform:translateX(8px)} to{opacity:1; transform:none}}
+.cart-item-thumb{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.cart-item-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.cart-item-name{font-weight:800;font-size:.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cart-item-unit{font-size:.72rem;color:var(--text-muted);font-weight:600}
+.cart-item-unit b{color:var(--text-secondary);font-family:var(--mono)}
+.cart-item-controls{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.qty-btn{width:28px;height:28px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:var(--text-primary);font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s}
+.qty-btn:hover{background:var(--accent-blue);color:#fff;border-color:var(--accent-blue)}
+.qty-btn:active{transform:scale(.92)}
+.qty-val{font-family:var(--mono);font-weight:800;font-size:.86rem;width:22px;text-align:center}
+.cart-item-total{font-weight:900;color:var(--accent-green);font-size:.88rem;min-width:78px;text-align:left; font-family:var(--mono)}
+.cart-item-remove{width:28px;height:28px;border-radius:8px;border:none;background:rgba(255,69,58,.12);color:var(--accent-red);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s}
+.cart-item-remove:hover{background:var(--accent-red);color:#fff}
+
+.cart-summary{border-top:1px solid var(--card-border); padding-top:12px; display:flex;flex-direction:column; gap:9px}
+.summary-row{display:flex;align-items:center;justify-content:space-between;font-size:.84rem;color:var(--text-secondary);font-weight:600}
+.summary-row strong{font-family:var(--mono);color:var(--text-primary)}
+.discount-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.discount-input{width:98px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);border-radius:10px;color:var(--text-primary);padding:7px 8px;text-align:center;font-weight:800;font-family:var(--mono);outline:none}
+.discount-input:focus{border-color:rgba(10,132,255,.45);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
+.total-row{font-size:1.12rem;font-weight:900;color:var(--text-primary);border-top:1px dashed rgba(255,255,255,.14);padding-top:10px;margin-top:2px}
+.total-row .total-val{color:var(--accent-blue); font-size:1.35rem; letter-spacing:-.5px}
+.pay-methods{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:2px}
+.pay-btn{padding:9px 8px;border-radius:11px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.05);color:var(--text-secondary);font-weight:800;font-size:.78rem;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:.2s}
+.pay-btn.active{background:rgba(10,132,255,.14);border-color:rgba(10,132,255,.32);color:#8ec7ff}
+.pay-btn:hover{transform:translateY(-1px)}
+.checkout-btn{
+  width:100%; padding:13px 14px; border-radius:12px; border:none; cursor:pointer;
+  background:linear-gradient(135deg, #30d158 0%, #1fb347 100%);
+  color:#fff; font-weight:900; font-size:1.02rem; display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:0 10px 20px rgba(48,209,88,.30); transition:.2s;
+}
+.checkout-btn:hover{transform:translateY(-1px); box-shadow:0 14px 26px rgba(48,209,88,.38)}
+.checkout-btn:active{transform:scale(.98)}
+.secure-note{display:flex;align-items:center;justify-content:center;gap:6px;color:var(--text-muted);font-size:.70rem;font-weight:700}
+
+/* extras */
+.mobile-only{display:none}
+@media (max-width: 1100px){
+  .products-grid{grid-template-columns: repeat(3, 1fr)}
+  .pos-grid-container{grid-template-columns: 1fr 340px}
+}
+@media (max-width: 860px){
+  body{overflow:auto; height:auto}
+  #app-container{height:auto; min-height:100vh}
+  .window-bar{padding:0 12px}
+  .app-title-badge{position:static; transform:none; padding:6px 10px; max-width:none}
+  .app-title-badge span{font-size:.82rem; max-width:none}
+  .window-controls{display:none}
+  .main-wrapper{flex-direction:column; overflow:visible}
+  .apple-sidebar{
+    width:auto; min-width:0; height:auto; flex-direction:row; overflow-x:auto; overflow-y:hidden;
+    padding:8px 8px 10px; gap:6px; border-left:none; border-top:1px solid var(--card-border);
+    order:2; position:sticky; bottom:0; z-index:40; border-radius:16px 16px 0 0; margin:0 8px;
+    backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    scrollbar-width:thin; scroll-snap-type:x proximity;
+  }
+  .apple-sidebar .nav-section-title, .apple-sidebar .sidebar-footer{display:none}
+  .nav-item{flex:0 0 auto; flex-direction:column; gap:4px; padding:6px 6px; justify-content:center; align-items:center; min-width:64px; text-align:center}
+  .nav-item span{display:block; font-size:.66rem; line-height:1.1; white-space:nowrap; font-weight:700; max-width:70px; overflow:hidden; text-overflow:ellipsis}
+  .nav-icon-wrapper{width:36px;height:36px; font-size:16px}
+  .nav-item.active::before{right:8px; left:8px; top:auto; bottom:-2px; width:auto; height:3px}
+  .content-container{padding:12px 12px 80px; overflow:visible; order:1}
+  .pos-grid-container{grid-template-columns:1fr; gap:12px}
+  .search-row{grid-template-columns:1fr}
+  .products-grid{grid-template-columns: repeat(2, 1fr)}
+  .cart-panel{position:static; min-height:auto; height:auto; align-self:stretch; top:auto}
+  .mobile-only{display:block}
+}
+@media (max-width: 560px){
+  .products-grid{gap:10px}
+  .product-card{padding:10px 8px}
+  .pay-methods{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<div id="app-container">
+  <header class="window-bar">
+    <div class="window-controls" aria-hidden="true">
+      <button class="win-btn close" type="button" aria-label="close"></button>
+      <button class="win-btn minimize" type="button" aria-label="minimize"></button>
+      <button class="win-btn maximize" type="button" aria-label="maximize"></button>
+    </div>
+    <div class="app-title-badge">
+      <div class="logo-icon"></div>
+      <span>نظام الكاشير والمخازن — Apex POS Studio</span>
+      <span style="background:rgba(10,132,255,.14);color:#8ec7ff;border:1px solid rgba(10,132,255,.28);padding:2px 8px;border-radius:999px;font-size:.70rem;font-weight:800">v2.4.0</span>
+    </div>
+    <div class="header-actions">
+      <button class="theme-toggle-btn" type="button" title="قفل الشاشة">🔒 قفل</button>
+      <button class="theme-toggle-btn primary" type="button" title="المظهر">🌓 المظهر</button>
+    </div>
+  </header>
+
+  <div class="main-wrapper">
+    <aside class="apple-sidebar" aria-label="القائمة الجانبية">
+      <div class="nav-section-title">القائمة الرئيسية</div>
+
+      <a href="#" class="nav-item active" data-tab="pos" title="نقطة البيع (POS)" aria-label="نقطة البيع (POS)">
+        <div class="nav-icon-wrapper">🛒</div><span>نقطة البيع (POS)</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="inventory" title="إدارة المخزن" aria-label="إدارة المخزن">
+        <div class="nav-icon-wrapper">📦</div><span>إدارة المخزن</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="purchasing" title="شراء المنتجات" aria-label="شراء المنتجات">
+        <div class="nav-icon-wrapper">📥</div><span>شراء المنتجات</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="dashboard" title="التقارير والأرباح" aria-label="التقارير والأرباح">
+        <div class="nav-icon-wrapper">📊</div><span>التقارير والأرباح</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="history" title="سجل الفواتير" aria-label="سجل الفواتير">
+        <div class="nav-icon-wrapper">🧾</div><span>سجل الفواتير</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="users" title="المستخدمون" aria-label="المستخدمون">
+        <div class="nav-icon-wrapper">👤</div><span>المستخدمون</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="customers" title="العملاء" aria-label="العملاء">
+        <div class="nav-icon-wrapper">👥</div><span>العملاء</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="suppliers" title="الموردون" aria-label="الموردون">
+        <div class="nav-icon-wrapper">🚚</div><span>الموردون</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="sales-invoices" title="فواتير البيع" aria-label="فواتير البيع">
+        <div class="nav-icon-wrapper">📑</div><span>فواتير البيع</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="purchase-invoices" title="فواتير الشراء" aria-label="فواتير الشراء">
+        <div class="nav-icon-wrapper">📋</div><span>فواتير الشراء</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="reports" title="التقارير المتقدمة" aria-label="التقارير المتقدمة">
+        <div class="nav-icon-wrapper">📈</div><span>التقارير المتقدمة</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="payments" title="التسديد" aria-label="التسديد">
+        <div class="nav-icon-wrapper">💰</div><span>التسديد</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="cash" title="الصندوق" aria-label="الصندوق">
+        <div class="nav-icon-wrapper">🏦</div><span>الصندوق</span>
+      </a>
+      <a href="#" class="nav-item" data-tab="settings" title="الإعدادات" aria-label="الإعدادات">
+        <div class="nav-icon-wrapper">⚙️</div><span>الإعدادات</span>
+      </a>
+
+      <div class="sidebar-footer">
+        <div class="system-status-indicator"><span class="status-dot"></span><span>متصل — المزامنة نشطة</span><span style="margin-right:auto;background:rgba(48,209,88,.12);color:var(--accent-green);border:1px solid rgba(48,209,88,.22);padding:2px 7px;border-radius:999px;font-size:.70rem">✓ محلي</span></div>
+        <div class="kbd-hint">اختصار البحث <kbd>F2</kbd> <span style="margin-right:auto">الباركود <kbd>Enter</kbd></span></div>
+      </div>
+    </aside>
+
+    <main class="content-container">
+      <section class="view-section active" id="view-pos">
+        <div class="pos-grid-container">
+
+          <!-- CATALOG -->
+          <div class="pos-catalog-panel">
+            <div class="search-row">
+              <label class="search-box scanner" aria-label="مسح الباركود">
+                <i style="color:var(--accent-blue)">📷</i>
+                <input type="text" placeholder="⚡ امسح كود الباركود... [Enter]" value="" />
+                <button class="camera-scan-btn" type="button">📷 كاميرا</button>
+              </label>
+              <label class="search-box" aria-label="بحث بالاسم">
+                <i>🔍</i>
+                <input type="text" placeholder="ابحث بالاسم أو SKU... [F2]" />
+              </label>
+            </div>
+
+            <div class="category-pills-bar" role="tablist" aria-label="التصنيفات">
+              <button class="category-pill active" role="tab" aria-selected="true">الكل <span class="count">18</span></button>
+              <button class="category-pill" role="tab">📱 إلكترونيات <span class="count">5</span></button>
+              <button class="category-pill" role="tab">🖥️ أجهزة <span class="count">4</span></button>
+              <button class="category-pill" role="tab">🎧 ملحقات <span class="count">3</span></button>
+              <button class="category-pill" role="tab">🥤 أجهزة منزلية <span class="count">3</span></button>
+              <button class="category-pill" role="tab">🍞 مواد غذائية <span class="count">3</span></button>
+            </div>
+
+            <div class="products-scroll-area">
+              <div class="products-grid" id="pos-products-grid">
+
+                <div class="product-card">
+                  <div class="product-top-row"><span class="badge-stock ok">متوفر</span><span class="sku-pill">SAM-S24-001</span></div>
+                  <div class="product-icon-box">📱</div>
+                  <div class="product-title">هاتف Samsung Galaxy S24</div>
+                  <div class="product-meta">إلكترونيات • 128GB • أسود</div>
+                  <div class="product-price">142,000 <small>دج</small></div>
+                  <div class="product-meta">المخزون: 12 • باركود: 8801643</div>
+                  <div class="add-hint">＋ إضافة للسلة</div>
+                </div>
+
+                <div class="product-card">
+                  <div class="product-top-row"><span class="badge-stock ok">متوفر</span><span class="sku-pill">HP-PAV-15-002</span></div>
+                  <div class="product-icon-box">💻</div>
+                  <div class="product-title">حاسوب HP Pavilion 15</div>
+                  <div class="product-meta">أجهزة • Core i5 • 16GB</div>
+                  <div class="product-price">98,500 <small>دج</small></div>
+                  <div class="product-meta">المخزون: 5 • باركود: 1948503</div>
+                  <div class="add-hint">＋ إضافة للسلة</div>
+                </div>
+
+                <div class="product-card">
+                  <div class="product-top-row"><span class="badge-stock ok">متوفر</span><span class="sku-pill">TCL-55QLED-003</span></div>
+                  <div class="product-icon-box">📺</div>
+                  <div class="product-title">تلفاز TCL 55" 4K QLED</div>
+                  <div class="product-meta">إلكترونيات • Smart TV</div>
+                  <div class="product-price">76,000 <small>دج</small></div>
+                  <div class="product-meta">المخزون: 8 • باركود: 5901234</div>
+                  <div class="add-hint">＋ إضافة للسلة</div>
+                </div>
+
+                <div class="product-card">
+                  <div class="product-top-row"><span class="badge-stock low">منخفض</span><span class="sku-pill">COND-350L-004</span></div>
+                  <div class="product-icon-box">🧊</div>
+                  <div class="product-title">ثلاجة Condor 350L</div>
+                  <div class="product-meta">أجهزة • No Frost</div>
+                  <div class="product-price">65,900 <small>دج</small></div>
+                  <div class="product-meta">المخزون: 3 • باركود: 6133001</div>
+                  <div class="add-hint">＋ إضافة للسلة</div>
+                </div>
+
+                <div class="product-card" style="border-color:rgba(48,209,88,.32); box-shadow:0 0 0 1px rgba(48,209,88,.18) inset">
+                  <div class="product-top-row"><span class="badge-stock ok">متوفر</span><span class="sku-pill">JBL-BT-005</span></div>
+                  <div class="product-icon-box" style="border-color:rgba(48,209,88,.22)">🎧</div>
+                  <div class="product-title">سماعات JBL بلوتوث</div>
+                  <div class="product-meta">ملحقات • ANC • أسود</div>
+                  <div class="product-price">9,800 <small>دج</small></div>
+                  <div class="product-meta">المخزون: 24 • باركود: 5003634</div>
+                  <div class="add-hint" style="background:var(--accent-green);color:#fff;border-color:var(--accent-green)">✓ في السلة ×2</div>
+                </div>
+
+                <div class="product-card">
+                  <div class="product-top-row"><span class="badge-stock ok">متوفر</span><span class="sku-pill">HP-LJ-006</span></div>
+                  <div class="product-icon-box">🖨️</div>
+                  <div class="product-title">طابعة HP LaserJet</div>
+                  <div class="product-meta">ملحقات • WiFi</div>
+                  <div class="product-price">32,000 <small>دج</small></div>
+                  <div class="product-meta">المخزون: 6 • باركود: 1939057</div>
+                  <div class="add-hint">＋ إضافة للسلة</div>
+                </div>
+
+                <div class="product-card">
+                  <div class="product-top-row"><span class="badge-stock ok">متوفر</span><span class="sku-pill">TCL-AC12-007</span></div>
+                  <div class="product-icon-box">❄️</div>
+                  <div class="product-title">مكيف TCL 12000 BTU</div>
+                  <div class="product-meta">أجهزة • Inverter</div>
+                  <div class="product-price">54,000 <small>دج</small></div>
+                  <div class="product-meta">المخزون: 4 • باركود: 6901234</div>
+                  <div class="add-hint">＋ إضافة للسلة</div>
+                </div>
+
+                <div class="product-card">
+                  <div class="product-top-row"><span class="badge-stock ok">متوفر</span><span class="sku-pill">SON-BL-008</span></div>
+                  <div class="product-icon-box">🥤</div>
+                  <div class="product-title">خلاط Sonashi 500W</div>
+                  <div class="product-meta">أجهزة منزلية • زجاج</div>
+                  <div class="product-price">7,200 <small>دج</small></div>
+                  <div class="product-meta">المخزون: 18 • باركود: 6134002</div>
+                  <div class="add-hint">＋ إضافة للسلة</div>
+                </div>
+
+              </div>
+              <div style="margin-top:12px; display:flex; gap:8px; align-items:center; color:var(--text-muted); font-size:.74rem; font-weight:700; justify-content:center; padding:8px; background:rgba(255,255,255,.04); border:1px dashed rgba(255,255,255,.08); border-radius:12px">
+                <span>◌</span> اسحب لإظهار المزيد — 10 منتجات أخرى في المخزن <span style="color:var(--accent-blue)">عرض الكل ←</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- CART -->
+          <aside class="cart-panel" aria-label="سلة المشتريات">
+            <div class="cart-header">
+              <h2>🛒 سلة المشتريات <span class="cart-count">2</span></h2>
+              <button class="clear-cart-btn" type="button">تفرّيغ السلة</button>
+            </div>
+
+            <div class="cart-items-list" id="cart-items-list">
+              <div class="cart-item">
+                <div class="cart-item-thumb">📱</div>
+                <div class="cart-item-info">
+                  <div class="cart-item-name">Samsung Galaxy S24</div>
+                  <div class="cart-item-unit"><b>142,000 دج</b> × وحدة</div>
+                </div>
+                <div class="cart-item-controls">
+                  <button class="qty-btn" type="button" aria-label="إنقاص">−</button>
+                  <span class="qty-val">1</span>
+                  <button class="qty-btn" type="button" aria-label="زيادة">＋</button>
+                </div>
+                <div class="cart-item-total">142,000</div>
+                <button class="cart-item-remove" type="button" aria-label="حذف">✕</button>
+              </div>
+
+              <div class="cart-item">
+                <div class="cart-item-thumb">🎧</div>
+                <div class="cart-item-info">
+                  <div class="cart-item-name">سماعات JBL بلوتوث</div>
+                  <div class="cart-item-unit"><b>9,800 دج</b> × وحدة</div>
+                </div>
+                <div class="cart-item-controls">
+                  <button class="qty-btn" type="button">−</button>
+                  <span class="qty-val">2</span>
+                  <button class="qty-btn" type="button">＋</button>
+                </div>
+                <div class="cart-item-total">19,600</div>
+                <button class="cart-item-remove" type="button">✕</button>
+              </div>
+
+              <!-- hint row -->
+              <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px dashed rgba(10,132,255,.22);background:rgba(10,132,255,.06);border-radius:12px;color:#8ec7ff;font-weight:700;font-size:.78rem">
+                <span>💡</span> امسح باركود إضافي لإضافة منتج جديد فورًا
+                <span style="margin-right:auto;font-family:var(--mono);background:rgba(255,255,255,.08);padding:2px 7px;border-radius:999px;font-size:.68rem">Enter</span>
+              </div>
+            </div>
+
+            <div class="cart-summary">
+              <div class="summary-row"><span>المجموع الفرعي:</span><strong>161,600 دج</strong></div>
+              <div class="summary-row discount-row">
+                <span style="display:flex;align-items:center;gap:6px">🏷️ إضافة خصم:</span>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <input class="discount-input" type="text" value="5,000" inputmode="numeric" aria-label="قيمة الخصم" />
+                  <span style="color:var(--accent-red);font-weight:800;font-family:var(--mono)">-5,000 دج</span>
+                </div>
+              </div>
+              <div class="summary-row" style="color:var(--accent-orange);font-weight:800"><span>التوصيل:</span><span style="font-family:var(--mono)">0 دج</span></div>
+              <div class="summary-row total-row"><span>الإجمالي الكلي:</span><span class="total-val">156,600 دج</span></div>
+
+              <div class="pay-methods" role="group" aria-label="طرق الدفع">
+                <button class="pay-btn active" type="button">💵 كاش</button>
+                <button class="pay-btn" type="button">💳 بطاقة</button>
+                <button class="pay-btn" type="button"> Pay</button>
+                <button class="pay-btn" type="button" style="background:rgba(255,159,10,.12);border-color:rgba(255,159,10,.22);color:var(--accent-orange)">📒 آجل</button>
+              </div>
+
+              <button class="checkout-btn" type="button">💳 إتمام عملية الدفع — Checkout <span style="background:rgba(255,255,255,.18);padding:2px 8px;border-radius:999px;font-size:.78rem">F9</span></button>
+              <div class="secure-note">🔒 عملية آمنة — الفاتورة تُطبع تلقائيًا 80mm <span style="color:var(--accent-green)">●</span> جاهز للطباعة</div>
+
+              <div style="display:flex;gap:8px;justify-content:center;align-items:center;padding-top:4px;border-top:1px solid rgba(255,255,255,.06);margin-top:2px">
+                <span style="width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;font-size:13px">🧾</span>
+                <span style="font-size:.74rem;color:var(--text-secondary);font-weight:700">رقم الفاتورة المؤقت: <b style="font-family:var(--mono);color:var(--text-primary)">FAC-2026-0841</b> • العميل: <b style="color:var(--text-primary)">عميل نقدي</b></span>
+              </div>
+            </div>
+          </aside>
+
+        </div>
+
+        <div class="glass-card mobile-only" style="margin-top:12px;display:flex;align-items:center;gap:10px;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#0a84ff,#5e5ce6);display:flex;align-items:center;justify-content:center;color:#fff"></div>
+            <div>
+              <div style="font-weight:900;font-size:.88rem">Apex POS Studio — معاينة</div>
+              <div style="font-size:.72rem;color:var(--text-muted);font-weight:700">Electron + Capacitor • RTL • Dark Glass</div>
+            </div>
+          </div>
+          <span style="font-family:var(--mono);font-size:.70rem;background:rgba(48,209,88,.14);color:var(--accent-green);border:1px solid rgba(48,209,88,.22);padding:4px 8px;border-radius:999px">Mockup ثابت</span>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+</body>
+</html>

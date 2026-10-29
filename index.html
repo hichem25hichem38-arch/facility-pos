@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ar" dir="rtl" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5" />
+    <meta name="theme-color" content="#f5f7fa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0c10" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="نظام نقطة البيع وإدارة المخزون والبيع بالتقسيط — يعمل بدون إنترنت على الحاسوب والهاتف" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <title>Apex POS — نظام البيع وإدارة المخزون</title>
+    <style>
+      /* First paint: prevents a white flash before the app mounts */
+      html, body { margin: 0; height: 100%; background: #f5f7fa; }
+      @media (prefers-color-scheme: dark) { html, body { background: #0b0c10; } }
+      #boot {
+        position: fixed; inset: 0; display: grid; place-items: center; gap: 18px;
+        font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+        align-content: center; justify-items: center;
+      }
+      #boot .m {
+        width: 54px; height: 54px; border-radius: 17px; display: grid; place-items: center;
+        background: linear-gradient(140deg, #2563eb, #7c3aed); color: #fff;
+        box-shadow: 0 10px 30px rgba(37, 99, 235, .4);
+        animation: bp 1.1s ease-in-out infinite;
+      }
+      #boot .t { font-size: 13px; font-weight: 700; color: #64748b; letter-spacing: .02em; }
+      @media (prefers-color-scheme: dark) { #boot .t { color: #8b93a5; } }
+      @keyframes bp { 0%, 100% { transform: scale(1); opacity: 1 } 50% { transform: scale(.9); opacity: .7 } }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="boot">
+      <div class="m">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9h18l-1.4 11.2a1 1 0 0 1-1 .8H5.4a1 1 0 0 1-1-.8z" />
+          <path d="M8.5 9V6a3.5 3.5 0 0 1 7 0v3" />
+        </svg>
+      </div>
+      <div class="t">جارٍ تشغيل النظام…</div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
