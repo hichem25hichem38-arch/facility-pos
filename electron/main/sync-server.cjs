@@ -26,8 +26,11 @@ const LOCAL_SETTING_KEYS = new Set([
   'lastAutoBackupSizeKB',
   'autoBackup-latest',
 ]);
-/** Hard cap on a pushed snapshot so a peer cannot exhaust the host's memory. */
-const MAX_PUSH_BYTES = 8 * 1024 * 1024;
+/**
+ * Hard cap on a pushed snapshot so a peer cannot exhaust the host's memory.
+ * Product photos travel as base64, so a real catalogue easily passes 8 MB.
+ */
+const MAX_PUSH_BYTES = 24 * 1024 * 1024;
 
 function getLanIps() {
   const nets = os.networkInterfaces();
@@ -87,6 +90,32 @@ function mergePayloads(a, b) {
     }
     merged.tables[t] = [...map.values()];
   }
+  return pruneDeleted(merged);
+}
+
+/**
+ * Drops rows another device hard-deleted, so a stale copy is never handed back
+ * and the snapshot does not grow forever.
+ */
+function pruneDeleted(merged) {
+  const stones = merged.tables.syncTombstones;
+  if (!Array.isArray(stones) || stones.length === 0) return merged;
+  const deleted = new Map();
+  for (const s of stones) {
+    if (!s || typeof s.tableName !== 'string' || typeof s.rowId !== 'string') continue;
+    const byId = deleted.get(s.tableName) || new Map();
+    byId.set(s.rowId, Math.max(byId.get(s.rowId) || 0, Number(s.deletedAt) || 0));
+    deleted.set(s.tableName, byId);
+  }
+  for (const [tableName, byId] of deleted) {
+    const rows = merged.tables[tableName];
+    if (!Array.isArray(rows)) continue;
+    merged.tables[tableName] = rows.filter((r) => {
+      const key = String(tableName === 'settings' ? r?.key : r?.id);
+      const at = byId.get(key);
+      return !(at && (Number(r?.updatedAt) || 0) <= at);
+    });
+  }
   return merged;
 }
 
@@ -102,6 +131,8 @@ function startSyncServer(port = 8080, token = '') {
   io = new Server(httpServer, {
     maxHttpBufferSize: MAX_PUSH_BYTES,
     cors: { origin: '*' },
+    // Snapshots are JSON text: compression keeps large catalogues under the cap.
+    perMessageDeflate: { threshold: 1024 },
     pingInterval: 15000,
     pingTimeout: 10000,
   });
@@ -126,19 +157,27 @@ function startSyncServer(port = 8080, token = '') {
     broadcastClientCount();
 
     socket.on('push', payload => {
-      if (!payload || typeof payload !== 'object' || !payload.tables) return;
+      if (!payload || typeof payload !== 'object' || !payload.tables) {
+        socket.emit('sync:done', { ok: false });
+        return;
+      }
       try {
         latest = mergePayloads(latest, {
           appVersion: payload.appVersion,
           exportedAt: Date.now(),
           tables: sanitizeTables(payload.tables),
         });
-        io.to('store').emit('sync', latest);
+        socket.emit('sync:done', { ok: true, at: latest.exportedAt });
+        // The pusher already holds its own rows: only the peers need the snapshot.
+        socket.broadcast.to('store').emit('sync', latest);
       } catch (e) {
         console.error('[sync-server] failed to merge push', e.message);
+        socket.emit('sync:done', { ok: false });
       }
     });
-    socket.on('pull', () => { if (latest) socket.emit('sync', latest); });
+    // Always answered, even with nothing stored yet, so a client that waits for
+    // its own turn to push is never left hanging.
+    socket.on('pull', () => socket.emit('sync', latest || { appVersion: '', exportedAt: 0, tables: {} }));
     socket.on('scan', data => {
       const barcode = typeof data === 'string' ? data : data?.barcode;
       const deviceId = typeof data === 'object' ? data?.deviceId : undefined;
@@ -204,4 +243,4 @@ function stopSyncServer() {
   httpServer = null;
 }
 
-module.exports = { startSyncServer, getSyncServerInfo, stopSyncServer, getLanIps, sanitizeTables };
+module.exports = { startSyncServer, getSyncServerInfo, stopSyncServer, getLanIps, sanitizeTables, mergePayloads };

@@ -328,7 +328,7 @@ export function InventoryPage() {
                   <Td>
                     <span className="flex items-center gap-2.5">
                       {p.image ? (
-                        <img src={p.image} alt="" className="h-9 w-9 shrink-0 rounded-md border border-line object-cover" />
+                        <img src={p.image} alt="" className="h-9 w-9 shrink-0 rounded-md border border-line bg-surface-3 object-contain" />
                       ) : (
                         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-surface-2 text-ink-muted">
                           <Icon name="image" size={15} strokeWidth={1.6} />

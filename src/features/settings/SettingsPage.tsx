@@ -14,7 +14,7 @@ import { SettingsService, UserService } from '@/services/settings/settings.servi
 import { BackupService } from '@/services/backup/backup.service';
 import { AutoBackupService } from '@/services/backup/autoBackup.service';
 import { LanSyncService } from '@/services/sync/lan-sync.service';
-import { getLicenseInfo } from '@/services/license/license.service';
+import { getLicenseInfo, appVersion } from '@/services/license/license.service';
 import { exportToXlsx } from '@/utils/export';
 import { formatDateTime, formatMoney } from '@/utils/format';
 import { LOCALE_OPTIONS, type Locale } from '@/i18n';
@@ -1085,12 +1085,17 @@ function ManualSyncCard() {
     setBusy('auto');
     try {
       const { SyncService } = await import('@/services/sync/sync.service');
-      const ok = await new SyncService().sync();
-      if (ok) {
+      const result = await new SyncService().sync();
+      if (result.ok) {
         toastSuccess(t('lanSyncOk'));
         setTimeout(() => location.reload(), 800);
       } else {
-        toastError(t('lanSyncFail'));
+        const key = result.reason === 'unpaired'
+          ? 'lanSyncUnpaired'
+          : result.reason === 'timeout'
+            ? 'lanSyncTimeout'
+            : 'lanSyncFail';
+        toastError(t(key));
         setBusy(null);
       }
     } catch (e) {
@@ -1245,17 +1250,15 @@ function AboutSection({ isDesktop }: { isDesktop: boolean }) {
 
   useEffect(() => {
     let alive = true;
-    if (isDesktop) {
-      window.desktop?.getVersion()
-        .then((v) => {
-          if (alive) setVersion(v);
-        })
-        .catch(() => {});
-    }
+    void appVersion()
+      .then((v) => {
+        if (alive) setVersion(v);
+      })
+      .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [isDesktop]);
+  }, []);
 
   const isAndroid = useMemo(() => {
     try {

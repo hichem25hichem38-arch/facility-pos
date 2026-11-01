@@ -4,6 +4,7 @@ import { AppRouter } from './router/router';
 import { ToastContainer } from '@/components/ui';
 import { useApplyTheme } from '@/hooks/useApplyTheme';
 import { useAppStore } from './store/app.store';
+import type { BackupPayload } from '@/services/backup/backup.service';
 
 export function App() {
   useApplyTheme();
@@ -15,7 +16,11 @@ export function App() {
       // One device id everywhere (license, sync, audit): prefer the machine id.
       const { getDeviceId } = await import('@/services/license/license.service');
       await getDeviceId().catch(() => {});
-      const { initScanSync } = await import('@/services/sync/scan.service');
+      const { initScanSync, registerSyncApplier } = await import('@/services/sync/scan.service');
+      const { registerSyncWatch } = await import('@/services/sync/sync.service');
+      const { LanSyncService } = await import('@/services/sync/lan-sync.service');
+      registerSyncWatch();
+      registerSyncApplier((payload) => new LanSyncService().importSnapshot(payload as BackupPayload));
       void initScanSync().catch(() => {});
       const { startLicenseHeartbeat } = await import('@/services/license/heartbeat.service');
       startLicenseHeartbeat();

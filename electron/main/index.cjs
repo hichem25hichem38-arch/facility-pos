@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -108,9 +108,17 @@ let syncPort = Number(process.env.SYNC_PORT || 8080);
 let syncToken = '';
 
 function createWindow() {
+  /* never open taller/wider than the screen — a frameless window that exceeds
+     the work area loses its top edge (title bar + page headers) off-screen */
+  const { workArea } = screen.getPrimaryDisplay();
+  const width = Math.min(1366, Math.max(1024, workArea.width - 32));
+  const height = Math.min(800, Math.max(640, workArea.height - 32));
+
   mainWindow = new BrowserWindow({
-    width: 1366,
-    height: 800,
+    width,
+    height,
+    x: workArea.x + Math.max(0, Math.round((workArea.width - width) / 2)),
+    y: workArea.y + Math.max(0, Math.round((workArea.height - height) / 2)),
     minWidth: 1024,
     minHeight: 640,
     show: false,

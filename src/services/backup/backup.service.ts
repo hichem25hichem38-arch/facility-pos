@@ -1,4 +1,5 @@
 import { getDb } from '@/database/db';
+import { withSuppressedLocalWrites } from '@/services/sync/sync-state';
 
 export interface BackupPayload {
   appVersion: string;
@@ -38,7 +39,7 @@ export class BackupService {
         ? (rows as { key?: string }[]).filter((r) => !isArchiveKey(r.key))
         : rows;
     }
-    return { appVersion: '1.0.0', exportedAt: Date.now(), tables };
+    return { appVersion: import.meta.env.VITE_APP_VERSION ?? '', exportedAt: Date.now(), tables };
   }
 
   /**
@@ -92,13 +93,15 @@ export class BackupService {
       if (!known.has(name)) continue;
       if (!Array.isArray(payload.tables[name])) throw new Error('INVALID_BACKUP_FILE');
     }
-    await db.transaction('rw', db.tables, async () => {
-      for (const table of db.tables) {
-        const rows = payload.tables[table.name];
-        if (!Array.isArray(rows)) continue;
-        await table.clear();
-        await table.bulkAdd(rows as Record<string, unknown>[]);
-      }
+    await withSuppressedLocalWrites(async () => {
+      await db.transaction('rw', db.tables, async () => {
+        for (const table of db.tables) {
+          const rows = payload.tables[table.name];
+          if (!Array.isArray(rows)) continue;
+          await table.clear();
+          await table.bulkAdd(rows as Record<string, unknown>[]);
+        }
+      });
     });
   }
 

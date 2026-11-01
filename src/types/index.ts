@@ -160,6 +160,17 @@ export interface StoreSettings {
   value: unknown;
 }
 
+/**
+ * Record of a hard delete. Without it a row deleted on one device would be
+ * re-imported from another device's snapshot on the next sync.
+ */
+export interface SyncTombstone {
+  id: string;
+  tableName: string;
+  rowId: string;
+  deletedAt: number;
+}
+
 export type Permission =
   | 'products.view' | 'products.create' | 'products.update' | 'products.delete'
   | 'inventory.view' | 'inventory.adjust'

@@ -11,11 +11,13 @@ import { useT } from '@/hooks/useT';
 import { useAppStore } from '@/app/store/app.store';
 import { toastError, toastSuccess } from '@/app/store/toast.store';
 import { formatMoney } from '@/utils/format';
+import { compressImage } from '@/utils/image';
 import { newId, syncMeta } from '@/utils/helpers';
 import { generateBarcode } from '@/utils/barcode';
 import { exportToXlsx } from '@/utils/export';
 import { AuditService } from '@/services/operations.service';
 import { BarcodeGenerateButton, BarcodeSVG, MiniBarcode } from '@/components/barcode/BarcodeView';
+import { ScannerSelector } from '@/components/barcode/ScannerSelector';
 import { ProductDetailModal } from '@/components/product/ProductDetailModal';
 import type { Product } from '@/types';
 
@@ -91,6 +93,10 @@ export function ProductsPage() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [detailBarcode, setDetailBarcode] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+
+  const isDesktop =
+    typeof window !== 'undefined' && !!(window as unknown as { desktop?: { isDesktop?: boolean } }).desktop?.isDesktop;
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [printItems, setPrintItems] = useState<PrintItem[] | null>(null);
@@ -102,7 +108,7 @@ export function ProductsPage() {
   const categoryName = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories]);
 
   const openCreate = () => {
-    setForm({ ...BLANK, sku: `SKU-${Date.now().toString().slice(-6)}`, barcode: generateBarcode() });
+    setForm({ ...BLANK, sku: `SKU-${Date.now().toString().slice(-6)}` });
     setErrors({});
   };
 
@@ -323,7 +329,11 @@ export function ProductsPage() {
 
   const assignBarcode = async (p: Product) => {
     try {
-      await getDb().products.update(p.id, { barcode: generateBarcode(), updatedAt: Date.now() });
+      const db = getDb();
+      const taken = new Set((await db.products.toArray()).map((x) => x.barcode).filter(Boolean));
+      let code = generateBarcode();
+      for (let i = 0; i < 5 && taken.has(code); i++) code = generateBarcode();
+      await db.products.update(p.id, { barcode: code, updatedAt: Date.now() });
       toastSuccess(t('savedOk'));
     } catch (e) {
       toastError(e instanceof Error ? e.message : t('errorGeneric'));
@@ -344,17 +354,17 @@ export function ProductsPage() {
     toastSuccess(`${t('copied')}: ${code}`);
   };
 
-  const onImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    if (file.size > 1024 * 1024) {
-      setErrors((er) => ({ ...er, image: t('imageTooLarge') }));
-      return;
+    try {
+      const image = await compressImage(file);
+      setForm((f) => (f ? { ...f, image } : f));
+      setErrors((er) => ({ ...er, image: '' }));
+    } catch {
+      setErrors((er) => ({ ...er, image: t('imageProcessError') }));
     }
-    const reader = new FileReader();
-    reader.onload = () => setForm((f) => (f ? { ...f, image: String(reader.result) } : f));
-    reader.readAsDataURL(file);
   };
 
   const exportRows = () => {
@@ -507,7 +517,7 @@ export function ProductsPage() {
                         label={t('selectProduct')}
                       />
                       {p.image ? (
-                        <img src={p.image} alt="" className="h-12 w-12 shrink-0 rounded-md border border-line object-cover" />
+                        <img src={p.image} alt="" className="h-12 w-12 shrink-0 rounded-md border border-line bg-surface-3 object-contain" />
                       ) : (
                         <span className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-surface-3 text-ink-muted">
                           <Icon name="image" size={18} strokeWidth={1.6} />
@@ -539,8 +549,12 @@ export function ProductsPage() {
                         <IconButton icon="edit" label={t('edit')} size={30} onClick={() => openEdit(p)} />
                       )}
                       <IconButton icon="print" label={t('printLabel')} size={30} onClick={() => openPrint([p])} />
-                      {p.barcode && (
+                      {p.barcode ? (
                         <IconButton icon="copy" label={t('copyBarcode')} size={30} onClick={() => copyBarcode(p.barcode)} />
+                      ) : (
+                        hasPermission('products.update') && (
+                          <IconButton icon="barcode" label={t('generateBarcode')} size={30} onClick={() => assignBarcode(p)} />
+                        )
                       )}
                       <span className="ms-auto flex items-center gap-1">
                         {!p.isActive && hasPermission('products.update') && (
@@ -576,7 +590,7 @@ export function ProductsPage() {
                       <Td>
                         <span className="flex items-center gap-2.5">
                           {p.image ? (
-                            <img src={p.image} alt="" className="h-9 w-9 shrink-0 rounded-md border border-line object-cover" />
+                            <img src={p.image} alt="" className="h-9 w-9 shrink-0 rounded-md border border-line bg-surface-3 object-contain" />
                           ) : (
                             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-surface-2 text-ink-muted">
                               <Icon name="image" size={15} strokeWidth={1.6} />
@@ -729,6 +743,9 @@ export function ProductsPage() {
                   inputMode="numeric"
                   maxLength={32}
                 />
+                <Button type="button" variant="secondary" icon="scan" onClick={() => setScanOpen(true)}>
+                  {t('scanCode')}
+                </Button>
                 <BarcodeGenerateButton onGenerated={(c) => setForm((f) => (f ? { ...f, barcode: c } : f))} />
               </span>
             </Field>
@@ -805,7 +822,7 @@ export function ProductsPage() {
             <Field label={t('image')} hint={t('productImageHint')} error={errors.image} className="sm:col-span-2">
               <span className="flex flex-wrap items-center gap-3">
                 {form.image ? (
-                  <img src={form.image} alt="" className="h-20 w-20 rounded-md border border-line object-cover" />
+                  <img src={form.image} alt="" className="h-20 w-28 rounded-md border border-line bg-surface-3 object-contain" />
                 ) : (
                   <span className="grid h-20 w-20 place-items-center rounded-md border border-dashed border-line-strong bg-surface-2 text-ink-muted">
                     <Icon name="image" size={22} strokeWidth={1.6} />
@@ -932,6 +949,19 @@ export function ProductsPage() {
               <p className="mt-2 text-center text-[0.7rem] font-semibold text-ink-muted">{t('printTip')}</p>
             </div>
           </div>
+        )}
+      </Modal>
+
+      <Modal open={scanOpen} onClose={() => setScanOpen(false)} title={t('scanCode')} icon="scan">
+        {scanOpen && (
+          <ScannerSelector
+            isDesktop={isDesktop}
+            onDetected={(v) => {
+              setScanOpen(false);
+              setForm((f) => (f ? { ...f, barcode: v.trim() } : f));
+            }}
+            onClose={() => setScanOpen(false)}
+          />
         )}
       </Modal>
 

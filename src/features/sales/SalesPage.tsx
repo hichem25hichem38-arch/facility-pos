@@ -14,6 +14,7 @@ import { SaleService } from '@/services/sales/sale.service';
 import { endOfDay, formatDate, formatDateTime, formatMoney, startOfDay } from '@/utils/format';
 import { exportToXlsx } from '@/utils/export';
 import { InvoicePrint } from '@/components/sales/InvoicePrint';
+import { PaperFit } from '@/components/common/PaperFit';
 import type { Customer, Installment, Payment, PaymentMethod, Sale, SaleStatus } from '@/types';
 
 const PAGE_SIZE = 20;
@@ -496,7 +497,7 @@ export function SalesPage() {
                         <Td>
                           <span className="flex items-center gap-2">
                             {product?.image ? (
-                              <img src={product.image} alt="" className="h-7 w-7 shrink-0 rounded border border-line object-cover" />
+                              <img src={product.image} alt="" className="h-7 w-7 shrink-0 rounded border border-line bg-surface-3 object-contain" />
                             ) : (
                               <span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-surface-2 text-ink-muted">
                                 <Icon name="box" size={13} strokeWidth={1.6} />
@@ -611,8 +612,10 @@ export function SalesPage() {
                 {t('paperThermalLabel')}
               </Button>
             </div>
-            <div className="scroll-y flex max-h-[60vh] justify-center overflow-auto rounded-lg border border-dashed border-line-strong bg-surface-2 p-3">
-              <InvoicePrint saleId={invoice.saleId} paper={invoice.paper} />
+            <div className="scroll-y flex max-h-[60vh] justify-start overflow-auto rounded-lg border border-dashed border-line-strong bg-surface-2 p-3">
+              <PaperFit width={invoice.paper === 'A4' ? '210mm' : '80mm'}>
+                <InvoicePrint saleId={invoice.saleId} paper={invoice.paper} />
+              </PaperFit>
             </div>
             <p className="text-center text-[0.7rem] font-semibold text-ink-muted">{t('contractPrintHint')}</p>
           </div>

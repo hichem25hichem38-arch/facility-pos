@@ -2,8 +2,7 @@ node_modules/
 dist/
 dist-electron/
 release/
-release-build*/
-release-tmp/
+release-*/
 facility.zip
 *.tsbuildinfo
 .env

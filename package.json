@@ -1,7 +1,7 @@
 {
   "name": "installment-pos",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.8",
   "description": "Installment POS & Inventory Management System - License activation required",
   "type": "module",
   "scripts": {
@@ -23,8 +23,8 @@
     "electron:build:trial": "npm run build:electron:trial && cross-env BUILD_SUFFIX=-trial electron-builder",
     "cap:sync": "npm run build:web:full && npx cap sync android",
     "cap:build": "npm run build:web:full && npx cap sync android && cd android && .\\gradlew assembleDebug",
-    "cap:build:full": "npm run build:web:full && npx cap sync android && cd android && .\\gradlew assembleDebug && cd .. && node -e \"const fs=require('fs');fs.copyFileSync('android/app/build/outputs/apk/debug/app-debug.apk','release/Facility-POS-'+require('./package.json').version+'-full.apk')\"",
-    "cap:build:trial": "npm run build:web:trial && npx cap sync android && cd android && .\\gradlew assembleDebug && cd .. && node -e \"const fs=require('fs');fs.copyFileSync('android/app/build/outputs/apk/debug/app-debug.apk','release/Facility-POS-'+require('./package.json').version+'-trial.apk')\""
+    "cap:build:full": "cross-env CAP_BUILD=true npm run build:web:full && npx cap sync android && cd android && .\\gradlew assembleDebug && cd .. && node -e \"const fs=require('fs');fs.copyFileSync('android/app/build/outputs/apk/debug/app-debug.apk','release/Facility-POS-'+require('./package.json').version+'-full.apk')\"",
+    "cap:build:trial": "cross-env CAP_BUILD=true npm run build:web:trial && npx cap sync android && cd android && .\\gradlew assembleDebug && cd .. && node -e \"const fs=require('fs');fs.copyFileSync('android/app/build/outputs/apk/debug/app-debug.apk','release/Facility-POS-'+require('./package.json').version+'-trial.apk')\""
   },
   "main": "electron/main/index.cjs",
   "build": {
@@ -52,6 +52,7 @@
     "@capacitor/android": "^8.5.0",
     "@capacitor/filesystem": "^8.1.3",
     "@capacitor/share": "^8.0.1",
+    "@zxing/library": "^0.21.3",
     "dexie": "^4.0.8",
     "dexie-react-hooks": "^1.1.7",
     "qrcode": "^1.5.4",

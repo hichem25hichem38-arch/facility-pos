@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from '@/database/db';
-import { Badge, Button, Card, EmptyState, Field, IconButton, Input, Modal, SearchInput, Select } from '@/components/ui';
+import { Button, EmptyState, Field, IconButton, Input, Modal, SearchInput, Select } from '@/components/ui';
 import { Icon } from '@/components/icons';
+import { PaperFit } from '@/components/common/PaperFit';
 import { ScannerSelector } from '@/components/barcode/ScannerSelector';
 import { InvoicePrint } from '@/components/sales/InvoicePrint';
-import { DesktopSyncPanel, PhoneSyncBadge } from '@/components/sync/DesktopSyncPanel';
 import { useT } from '@/hooks/useT';
 import { useAppStore } from '@/app/store/app.store';
-import { toastError, toastSuccess } from '@/app/store/toast.store';
+import { toastError, toastSuccess, toastWarning } from '@/app/store/toast.store';
 import { SaleService, type CartLine } from '@/services/sales/sale.service';
 import { calculateInstallmentPlan, type PlanCalculation } from '@/services/installments/calculator';
 import { formatDate, formatMoney, round2 } from '@/utils/format';
-import type { Customer, Frequency, PaymentMethod, Product, SaleType } from '@/types';
+import type { Category, Customer, PaymentMethod, Product, SaleType } from '@/types';
 
 const INSTALLMENT_OPTIONS = [3, 6, 9, 12, 18, 24, 36];
 const GRID_LIMIT = 60;
@@ -40,49 +40,56 @@ export function PosPage() {
   const navigate = useNavigate();
 
   const [search, setSearch] = useState('');
+  const [barcode, setBarcode] = useState('');
+  const [categoryId, setCategoryId] = useState('ALL');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [discountS, setDiscountS] = useState('');
   const [saleType, setSaleType] = useState<SaleType>('CASH');
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [customerModal, setCustomerModal] = useState(false);
   const [custSearch, setCustSearch] = useState('');
-  const [installmentModal, setInstallmentModal] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
-  const [cartSheet, setCartSheet] = useState(false);
   const [invoice, setInvoice] = useState<{ saleId: string; type: SaleType } | null>(null);
   const [invoicePaper, setInvoicePaper] = useState<'A4' | '8x11'>('A4');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  const [lastRemoteScan, setLastRemoteScan] = useState<string | null>(null);
 
   const [receivedS, setReceivedS] = useState('');
   const [downS, setDownS] = useState('');
   const [numInstallments, setNumInstallments] = useState(12);
   const [firstDue, setFirstDue] = useState(() => new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10));
-  const [frequency, setFrequency] = useState<Frequency>('MONTHLY');
 
-  const searchRef = useRef<HTMLInputElement>(null);
+  const barcodeRef = useRef<HTMLInputElement>(null);
 
   const isDesktop =
     typeof window !== 'undefined' && !!(window as unknown as { desktop?: { isDesktop?: boolean } }).desktop?.isDesktop;
 
   const products = useLiveQuery(() => getDb().products.filter((p) => p.isActive).toArray(), [], [] as Product[]);
+  const categories = useLiveQuery(() => getDb().categories.orderBy('name').toArray(), [], [] as Category[]);
   const customers = useLiveQuery(() => getDb().customers.toArray(), [], [] as Customer[]);
 
   const productMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
+  /* drop a category filter whose category was deleted */
+  useEffect(() => {
+    if (categoryId !== 'ALL' && !categories.some((c) => c.id === categoryId)) setCategoryId('ALL');
+  }, [categories, categoryId]);
+
   const visibleProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return products.slice(0, GRID_LIMIT);
+    const inCategory = (p: Product) => categoryId === 'ALL' || p.categoryId === categoryId;
+    if (!q) return products.filter(inCategory).slice(0, GRID_LIMIT);
     return products
       .filter(
         (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.sku.toLowerCase().includes(q) ||
-          p.barcode.toLowerCase().includes(q),
+          inCategory(p) &&
+          (p.name.toLowerCase().includes(q) ||
+            p.sku.toLowerCase().includes(q) ||
+            p.barcode.toLowerCase().includes(q)),
       )
       .slice(0, GRID_LIMIT);
-  }, [products, search]);
+  }, [products, search, categoryId]);
 
   const filteredCustomers = useMemo(() => {
     const q = custSearch.trim().toLowerCase();
@@ -94,6 +101,7 @@ export function PosPage() {
 
   /* ---------------- money ---------------- */
   const subtotal = useMemo(() => round2(cart.reduce((s, l) => s + l.quantity * l.unitPrice, 0)), [cart]);
+  const totalQty = useMemo(() => cart.reduce((s, l) => s + l.quantity, 0), [cart]);
   const discount = numChange(discountS);
   const discountError = discount > subtotal ? t('discountTooBig') : '';
   const total = round2(subtotal - discount);
@@ -110,11 +118,11 @@ export function PosPage() {
     if (saleType !== 'INSTALLMENT' || cart.length === 0 || discountError) return null;
     if (!Number.isFinite(firstDueTs)) return null;
     try {
-      return calculateInstallmentPlan(total, downNum, numInstallments, firstDueTs, frequency);
+      return calculateInstallmentPlan(total, downNum, numInstallments, firstDueTs, 'MONTHLY');
     } catch {
       return null;
     }
-  }, [saleType, cart.length, discountError, total, downNum, numInstallments, firstDueTs, frequency]);
+  }, [saleType, cart.length, discountError, total, downNum, numInstallments, firstDueTs]);
 
   const installmentError =
     saleType === 'INSTALLMENT' && cart.length === 0
@@ -127,22 +135,17 @@ export function PosPage() {
 
   /* ---------------- cart ---------------- */
   const addToCart = useCallback(
-    (p: Product, qty = 1) => {
+    (p: Product) => {
       if (p.stockQuantity <= 0) {
         toastError(`${t('outOfStock')}: ${p.name}`);
         return;
       }
-      const existing = cart.find((l) => l.productId === p.id);
-      const next = (existing?.quantity ?? 0) + qty;
-      if (next > p.stockQuantity) {
-        toastError(t('stockLimitReached', { count: p.stockQuantity }));
+      /* one line per product: the quantity is changed from the cart */
+      if (cart.some((l) => l.productId === p.id)) {
+        toastWarning(`${t('alreadyInCart')}: ${p.name}`);
         return;
       }
-      if (existing) {
-        setCart((prev) => prev.map((l) => (l.productId === p.id ? { ...l, quantity: l.quantity + qty } : l)));
-      } else {
-        setCart((prev) => [...prev, { productId: p.id, name: p.name, quantity: qty, unitPrice: p.sellingPrice }]);
-      }
+      setCart((prev) => [...prev, { productId: p.id, name: p.name, quantity: 1, unitPrice: p.sellingPrice }]);
       setSearch('');
       setFormError('');
     },
@@ -189,23 +192,18 @@ export function PosPage() {
   useEffect(() => {
     let off: (() => void) | null = null;
     let cancelled = false;
-    let flash: ReturnType<typeof setTimeout> | null = null;
     import('@/services/sync/scan.service').then((m) => {
       if (cancelled) return;
-      off = m.onScan((barcode) => {
-        setLastRemoteScan(barcode);
-        toastSuccess(`${t('remoteScanReceived')}: ${barcode}`);
+      off = m.onScan((code) => {
+        toastSuccess(`${t('remoteScanReceived')}: ${code}`);
         try { navigator.vibrate?.(60); } catch {}
-        searchRef.current?.focus();
-        handleCode(barcode);
-        if (flash) clearTimeout(flash);
-        flash = setTimeout(() => setLastRemoteScan(null), 3000);
+        handleCode(code);
+        barcodeRef.current?.focus();
       });
     });
     return () => {
       cancelled = true;
       if (off) off();
-      if (flash) clearTimeout(flash);
     };
   }, [handleCode, t]);
 
@@ -233,8 +231,7 @@ export function PosPage() {
     setCustomer(null);
     setSaleType('CASH');
     setFormError('');
-    setCartSheet(false);
-    setInstallmentModal(false);
+    setCheckoutOpen(false);
   }, []);
 
   const completeCash = useCallback(async () => {
@@ -272,7 +269,6 @@ export function PosPage() {
   const completeInstallment = useCallback(async () => {
     if (!plan || cart.length === 0 || !authUser || saving) return;
     if (!customer) {
-      setInstallmentModal(false);
       setFormError(t('customerRequiredInstallment'));
       toastError(t('customerRequiredInstallment'));
       return;
@@ -308,301 +304,209 @@ export function PosPage() {
     }
   }, [plan, cart, authUser, saving, discount, customer, downNum, numInstallments, firstDueTs, total, currency, locale, t, resetAll, mapSaleError]);
 
-  /* Keyboard shortcuts: F2 search · F4 customer · F8 complete · Esc close */
+  /* Keyboard shortcuts: F8 checkout · Esc close */
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'F2') { e.preventDefault(); searchRef.current?.focus(); }
-      else if (e.key === 'F4') { e.preventDefault(); setCustomerModal(true); }
-      else if (e.key === 'F8') {
+      if (e.key === 'F8') {
         e.preventDefault();
-        if (saleType === 'CASH') completeCash();
-        else if (plan) setInstallmentModal(true);
+        if (cart.length > 0) setCheckoutOpen(true);
       } else if (e.key === 'Escape') {
         setCustomerModal(false);
-        setInstallmentModal(false);
+        setCheckoutOpen(false);
         setScannerOpen(false);
-        setCartSheet(false);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [saleType, completeCash, plan]);
+  }, [cart.length]);
 
-  /* ---------------- shared fragments ---------------- */
-  const cartRows = (
-    <ul className="scroll-y max-h-[38vh] divide-y divide-line overflow-y-auto px-3 py-1 lg:max-h-80">
-      {cart.map((l) => {
-        const p = productMap.get(l.productId);
-        const stock = p?.stockQuantity ?? l.quantity;
-        const atLimit = l.quantity >= stock;
-        return (
-          <li key={l.productId} className="flex items-center gap-2 py-2.5">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[0.82rem] font-extrabold text-ink">{l.name}</p>
-              <p className="num mt-0.5 text-[0.68rem] font-semibold text-ink-muted">
-                {formatMoney(l.unitPrice, currency)} · {t('stock')}:{' '}
-                <span className={atLimit ? 'font-black text-warn' : ''}>{stock}</span>
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <IconButton icon="minus" size={28} label="-" onClick={() => updateQty(l.productId, l.quantity - 1)} />
-              <input
-                type="number"
-                min={1}
-                max={stock}
-                value={l.quantity}
-                dir="ltr"
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === '') return;
-                  const n = Math.floor(Number(v));
-                  if (Number.isFinite(n)) updateQty(l.productId, n);
-                }}
-                className="num h-8 w-11 rounded-md border border-line bg-surface-2 text-center text-[0.82rem] font-black text-ink outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15"
-              />
-              <IconButton icon="plus" size={28} label="+" className={atLimit ? 'opacity-45' : ''} onClick={() => updateQty(l.productId, l.quantity + 1)} />
-            </div>
-            <span className="num w-24 shrink-0 text-end text-[0.84rem] font-black text-ink">
-              {formatMoney(round2(l.quantity * l.unitPrice), currency)}
-            </span>
-            <IconButton icon="trash" variant="danger" size={28} label={t('removeLine')} onClick={() => updateQty(l.productId, 0)} />
-          </li>
-        );
-      })}
-    </ul>
-  );
-
-  const checkout = (
-    <div className="flex flex-col gap-3">
-      {/* customer */}
-      <button
-        type="button"
-        onClick={() => { setCustSearch(''); setCustomerModal(true); }}
-        className="flex w-full items-center gap-2.5 rounded-md border border-line bg-surface-2 px-3 py-2 text-start transition-colors hover:border-line-strong"
-      >
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-brand/10 text-brand">
-          <Icon name="user" size={15} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[0.66rem] font-bold text-ink-muted">{t('customer')}</span>
-          <span className="block truncate text-[0.84rem] font-extrabold text-ink">
-            {customer ? customer.fullName : t('walkInCustomer')}
-          </span>
-        </span>
-        <Icon name="chevron-start" size={14} className="shrink-0 text-ink-muted" />
-      </button>
-
-      {/* sale type */}
-      <div className="grid grid-cols-2 gap-1 rounded-lg border border-line bg-surface-2 p-1">
-        {(['CASH', 'INSTALLMENT'] as SaleType[]).map((st) => (
+  /* ---------------- cart panel (desktop column and mobile inline block) ---------------- */
+  const cartPanel = () => (
+    <>
+      <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-3">
+        <h2 className="flex items-center gap-2 text-[0.98rem] font-extrabold text-ink">
+          <Icon name="cart" size={17} className="text-brand" />
+          {t('cart')} <span className="num text-ink-muted">({totalQty})</span>
+        </h2>
+        {cart.length > 0 && (
           <button
-            key={st}
             type="button"
-            onClick={() => { setSaleType(st); setFormError(''); }}
-            className={`flex h-9.5 items-center justify-center gap-2 rounded-md text-[0.8rem] font-extrabold transition-all duration-150 ${
-              saleType === st ? 'bg-brand text-brand-contrast shadow-brand' : 'text-ink-muted hover:text-ink'
-            }`}
+            onClick={() => { setCart([]); setFormError(''); }}
+            className="text-[0.76rem] font-bold text-danger transition-opacity hover:opacity-75"
           >
-            <Icon name={st === 'CASH' ? 'banknote' : 'calendar'} size={15} />
-            {st === 'CASH' ? t('cashSale') : t('installmentSale')}
+            {t('clearCart')}
           </button>
-        ))}
-      </div>
-
-      {/* discount */}
-      <Field label={t('discount')} error={discountError}>
-        <Input
-          type="number"
-          min={0}
-          step="0.01"
-          dir="ltr"
-          inputMode="decimal"
-          className="num"
-          value={discountS}
-          placeholder="0.00"
-          onChange={(e) => { setDiscountS(e.target.value); setFormError(''); }}
-        />
-      </Field>
-
-      {/* totals */}
-      <div className="rounded-lg border border-line bg-surface-2 px-3 py-2.5">
-        <div className="flex items-center justify-between text-[0.76rem] font-semibold text-ink-2">
-          <span>{t('subtotal')}</span>
-          <span className="num font-bold">{formatMoney(subtotal, currency)}</span>
-        </div>
-        {discount > 0 && (
-          <div className="mt-1 flex items-center justify-between text-[0.76rem] font-semibold text-warn">
-            <span>{t('discount')}</span>
-            <span className="num font-bold">-{formatMoney(discount, currency)}</span>
-          </div>
         )}
-        <div className="mt-1.5 flex items-center justify-between border-t border-line pt-1.5">
-          <span className="text-[0.86rem] font-black text-ink">{t('total')}</span>
-          <span className="num text-[1.05rem] font-black text-brand">{formatMoney(total, currency)}</span>
-        </div>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto scroll-y px-3 py-2">
+        {cart.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 py-12 text-center text-ink-muted">
+            <Icon name="cart" size={38} strokeWidth={1.5} className="opacity-30" />
+            <p className="text-[0.86rem] font-bold text-ink-2">{t('emptyCart')}</p>
+            <p className="text-[0.72rem] font-semibold">{t('cartEmptyHint')}</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-line">
+            {cart.map((l) => {
+              const p = productMap.get(l.productId);
+              const atLimit = !!p && l.quantity >= p.stockQuantity;
+              return (
+                <li key={l.productId} className="flex items-center gap-2 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[0.82rem] font-extrabold text-ink">{l.name}</p>
+                    <p className="num mt-0.5 text-[0.68rem] font-semibold text-ink-muted">
+                      {formatMoney(l.unitPrice, currency)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <IconButton icon="minus" size={26} label={t('removeLine')} onClick={() => updateQty(l.productId, l.quantity - 1)} />
+                    <input
+                      type="number"
+                      min={1}
+                      max={p?.stockQuantity}
+                      value={l.quantity}
+                      dir="ltr"
+                      inputMode="numeric"
+                      aria-label={t('quantity')}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '') return;
+                        const n = Math.floor(Number(v));
+                        if (Number.isFinite(n) && n >= 0) updateQty(l.productId, n);
+                      }}
+                      className="num h-7 w-10 rounded-md border border-line bg-surface-2 text-center text-[0.8rem] font-black text-ink outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand/15"
+                    />
+                    <IconButton
+                      icon="plus"
+                      size={26}
+                      label="+"
+                      className={atLimit ? 'opacity-45' : ''}
+                      onClick={() => updateQty(l.productId, l.quantity + 1)}
+                    />
+                  </div>
+                  <span className="num shrink-0 whitespace-nowrap text-end text-[0.8rem] font-black text-ink">
+                    {formatMoney(round2(l.quantity * l.unitPrice), currency)}
+                  </span>
+                  <IconButton
+                    icon="trash"
+                    variant="danger"
+                    size={26}
+                    label={t('removeLine')}
+                    onClick={() => updateQty(l.productId, 0)}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
-      {saleType === 'CASH' ? (
-        <>
-          <Field label={t('receivedAmount')} error={receivedError}>
-            <span className="flex gap-2">
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                dir="ltr"
-                inputMode="decimal"
-                className="num flex-1"
-                value={receivedS}
-                placeholder={formatMoney(total, currency)}
-                onChange={(e) => { setReceivedS(e.target.value); setFormError(''); }}
-              />
-              <Button variant="secondary" className="shrink-0" onClick={() => setReceivedS(String(total))}>
-                {t('exactAmount')}
-              </Button>
-            </span>
-          </Field>
-          {changeDue > 0 && (
-            <div className="flex items-center justify-between rounded-lg border border-ok/25 bg-ok/12 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-ok">
-                <Icon name="banknote" size={14} /> {t('changeDue')}
-              </span>
-              <span className="num text-[0.95rem] font-black text-ok">{formatMoney(changeDue, currency)}</span>
-            </div>
-          )}
-        </>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setInstallmentModal(true)}
-          className="w-full rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-start transition-colors hover:border-brand/40"
-        >
-          <span className="flex items-center justify-between gap-2 text-[0.78rem] font-extrabold text-ink">
-            <span className="flex items-center gap-1.5">
-              <Icon name="calendar" size={14} className="text-brand" />
-              {numInstallments} × {t('monthly')}
-            </span>
-            <Icon name="chevron-start" size={13} className="text-ink-muted" />
-          </span>
-          {plan ? (
-            <span className="mt-1.5 grid grid-cols-3 gap-1.5">
-              <span className="rounded-md bg-surface px-2 py-1.5">
-                <span className="block text-[0.62rem] font-bold text-ink-muted">{t('downPayment')}</span>
-                <span className="num block truncate text-[0.74rem] font-black text-ink">{formatMoney(downNum, currency)}</span>
-              </span>
-              <span className="rounded-md bg-surface px-2 py-1.5">
-                <span className="block text-[0.62rem] font-bold text-ink-muted">{t('financedAmount')}</span>
-                <span className="num block truncate text-[0.74rem] font-black text-ink">{formatMoney(plan.financedAmount, currency)}</span>
-              </span>
-              <span className="rounded-md bg-surface px-2 py-1.5">
-                <span className="block text-[0.62rem] font-bold text-ink-muted">{t('installmentAmount')}</span>
-                <span className="num block truncate text-[0.74rem] font-black text-brand">{formatMoney(plan.installmentAmount, currency)}</span>
-              </span>
-            </span>
-          ) : (
-            <span className="mt-1 block text-[0.72rem] font-bold text-ink-muted">{t('schedulePreview')}</span>
-          )}
-        </button>
-      )}
-
-      {saleType === 'INSTALLMENT' && installmentError && (
-        <p className="flex items-center gap-1.5 rounded-md border border-danger/25 bg-danger/12 px-2.5 py-1.5 text-[0.74rem] font-bold text-danger">
-          <Icon name="alert" size={13} /> {installmentError}
-        </p>
-      )}
-      {formError && (
-        <p className="flex items-center gap-1.5 rounded-md border border-danger/25 bg-danger/12 px-2.5 py-1.5 text-[0.74rem] font-bold text-danger">
-          <Icon name="alert" size={13} /> {formError}
-        </p>
-      )}
-
-      {saleType === 'CASH' ? (
+      <div className="space-y-2 border-t border-line p-3">
+        <div className="flex items-center justify-between text-[0.78rem] font-semibold text-ink-2">
+          <span>{t('subtotal')}</span>
+          <span className="num font-bold text-ink">{formatMoney(subtotal, currency)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-2 text-[0.78rem] font-semibold text-ink-2">
+          <span>{t('discount')}</span>
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            dir="ltr"
+            inputMode="decimal"
+            className="num h-8 w-24 text-end"
+            value={discountS}
+            placeholder="0"
+            onChange={(e) => { setDiscountS(e.target.value); setFormError(''); }}
+          />
+        </div>
+        {discountError && (
+          <p className="flex items-center gap-1 text-[0.72rem] font-bold text-danger">
+            <Icon name="alert" size={12} /> {discountError}
+          </p>
+        )}
+        <div className="flex items-center justify-between border-t border-line pt-2">
+          <span className="text-[0.9rem] font-black text-ink">{t('total')}</span>
+          <span className="num text-[1.18rem] font-black text-brand">{formatMoney(total, currency)}</span>
+        </div>
         <Button
           size="lg"
           variant="success"
           icon="check"
           className="w-full"
-          disabled={cart.length === 0 || !!discountError || !!receivedError}
-          loading={saving}
-          onClick={completeCash}
+          disabled={cart.length === 0}
+          onClick={() => { setFormError(''); setReceivedS(''); setCheckoutOpen(true); }}
         >
-          {t('completeSale')} — {formatMoney(total, currency)}
+          {t('completeSale')}
         </Button>
-      ) : (
-        <Button
-          size="lg"
-          icon="calendar"
-          className="w-full"
-          disabled={cart.length === 0 || !!discountError || !plan}
-          onClick={() => setInstallmentModal(true)}
-        >
-          {t('installmentSale')}
-        </Button>
-      )}
-      <Button
-        variant="ghost"
-        icon="trash"
-        className="w-full"
-        disabled={cart.length === 0}
-        onClick={() => { setCart([]); setFormError(''); }}
-      >
-        {t('clearCart')}
-      </Button>
-    </div>
+      </div>
+    </>
   );
 
   /* ---------------- render ---------------- */
   return (
     <>
-      <div className="no-print flex flex-col gap-4">
-        {/* Sync banner: desktop shows the pairing QR, phone a badge + scanner link */}
-        {isDesktop ? (
-          <DesktopSyncPanel />
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <PhoneSyncBadge />
-            <Link
-              to="/scanner"
-              className="inline-flex h-8 items-center gap-1.5 rounded-full bg-brand px-3.5 text-[0.76rem] font-bold text-brand-contrast shadow-brand transition-colors hover:bg-brand-hover"
-            >
-              <Icon name="scan" size={14} /> {t('openScannerPage')}
-            </Link>
-            {lastRemoteScan && (
-              <Badge tone="ok" icon="download" className="anim-pop">
-                <span className="mono" dir="ltr">{lastRemoteScan}</span>
-              </Badge>
-            )}
-          </div>
-        )}
-        {!isDesktop && lastRemoteScan && (
-          <div className="anim-pop flex items-center justify-center gap-2 rounded-lg border border-ok/25 bg-ok/12 px-3 py-2 text-[0.8rem] font-bold text-ok">
-            <Icon name="download" size={14} />
-            {t('remoteScanReceived')}: <span className="mono" dir="ltr">{lastRemoteScan}</span>
-          </div>
-        )}
-
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_370px] lg:items-start xl:grid-cols-[minmax(0,1fr)_400px]">
-          {/* Products: search + scan + grid */}
-          <Card padded={false} className="overflow-hidden">
-            <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
+      <div className="no-print grid h-[calc(100dvh-11.5rem)] grid-rows-[minmax(0,1fr)_auto] gap-3 sm:h-[calc(100dvh-12.5rem)] lg:h-[calc(100dvh-6.5rem)] lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-1">
+        {/* Catalog: barcode + search, categories, products */}
+        <section className="panel flex min-h-0 flex-col overflow-hidden rounded-lg border border-line shadow-1">
+          <div className="flex flex-col gap-2.5 border-b border-line p-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="relative flex items-center">
+                <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-brand">
+                  <Icon name="scan" size={15} />
+                </span>
+                <input
+                  ref={barcodeRef}
+                  value={barcode}
+                  autoFocus
+                  dir="ltr"
+                  onChange={(e) => setBarcode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    handleCode(barcode);
+                    setBarcode('');
+                  }}
+                  placeholder={t('barcodePlaceholder')}
+                  className="h-9.5 w-full rounded-md border-2 border-brand/45 bg-brand/5 ps-9 pe-24 text-[0.85rem] font-semibold text-ink outline-none transition-all placeholder:font-medium placeholder:text-ink-muted focus:border-brand focus:ring-4 focus:ring-brand/15"
+                />
+                <button
+                  type="button"
+                  onClick={() => setScannerOpen(true)}
+                  className="absolute inset-y-1 end-1 inline-flex items-center gap-1 rounded bg-brand px-2.5 text-[0.72rem] font-bold text-brand-contrast transition-colors hover:bg-brand-hover"
+                >
+                  <Icon name="scan" size={13} />
+                  <span className="hidden sm:inline">{t('scannerCamera')}</span>
+                </button>
+              </div>
               <SearchInput
                 value={search}
                 onChange={setSearch}
-                placeholder={t('scanBarcode')}
-                className="min-w-44 flex-1"
-                inputRef={searchRef}
+                placeholder={t('searchProductsPlaceholder')}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleCode(search); }}
               />
-              <Button variant="secondary" icon="scan" className="shrink-0" onClick={() => setScannerOpen(true)}>
-                <span className="hidden sm:inline">{t('openScanner')}</span>
-              </Button>
-              <Badge tone="muted" className="hidden shrink-0 xl:inline-flex">{t('posShortcuts')}</Badge>
             </div>
-            {isDesktop && (
-              <p className="border-b border-line bg-surface-2 px-3 py-1.5 text-[0.7rem] font-semibold text-ink-muted">
-                {t('desktopScanHint')}
-              </p>
-            )}
+
+            <div className="no-scrollbar flex items-center gap-2 overflow-x-auto pb-0.5">
+              {[{ id: 'ALL', name: t('all') }, ...categories].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCategoryId(c.id)}
+                  className={`shrink-0 rounded-full border px-3.5 py-1.5 text-[0.8rem] font-bold transition-all duration-150 ${
+                    categoryId === c.id
+                      ? 'border-brand bg-brand text-brand-contrast shadow-brand'
+                      : 'border-line bg-surface-2 text-ink-2 hover:border-line-strong hover:text-ink'
+                  }`}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto scroll-y p-3">
             {visibleProducts.length === 0 ? (
               <EmptyState
                 icon={search ? 'search' : 'box'}
@@ -610,102 +514,251 @@ export function PosPage() {
                 hint={search ? undefined : t('cartEmptyHint')}
               />
             ) : (
-              <div className="scroll-y grid max-h-[52vh] grid-cols-2 gap-2 p-3 sm:grid-cols-3 lg:max-h-[calc(100dvh-15rem)] xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
                 {visibleProducts.map((p) => {
                   const soldOut = p.stockQuantity <= 0;
+                  const low = p.stockQuantity > 0 && p.stockQuantity <= p.minimumStock;
                   return (
                     <button
                       key={p.id}
                       type="button"
                       disabled={soldOut}
                       onClick={() => addToCart(p)}
-                      className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface-2 p-2.5 text-start transition-all duration-150 hover:border-brand/45 hover:bg-surface-3 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45"
+                      className="flex flex-col items-center gap-1.5 rounded-lg border border-line bg-surface-2 p-2.5 text-center transition-all duration-150 hover:-translate-y-0.5 hover:border-brand/45 hover:shadow-2 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45"
                     >
                       {p.image ? (
-                        <img src={p.image} alt="" className="h-16 w-full rounded-md border border-line object-cover" />
+                        <img src={p.image} alt="" className="h-16 w-full rounded-md border border-line bg-surface-3 object-contain" />
                       ) : (
                         <span className="grid h-16 w-full place-items-center rounded-md bg-surface-3 text-ink-muted">
                           <Icon name="image" size={22} strokeWidth={1.6} />
                         </span>
                       )}
-                      <span className="line-clamp-2 min-h-8 text-[0.76rem] font-bold leading-tight text-ink">{p.name}</span>
-                      <span className="num text-[0.84rem] font-black text-brand">{formatMoney(p.sellingPrice, currency)}</span>
-                      <span className="flex items-center justify-between gap-1">
-                        <Badge tone={soldOut ? 'danger' : p.stockQuantity <= p.minimumStock ? 'warn' : 'muted'}>
-                          {t('stock')}: {p.stockQuantity}
-                        </Badge>
-                        {p.barcode && (
-                          <span className="mono hidden max-w-16 truncate text-[0.6rem] font-semibold text-ink-muted sm:block" dir="ltr">
-                            {p.barcode}
-                          </span>
-                        )}
+                      <span className="line-clamp-2 min-h-9 text-[0.78rem] font-bold leading-tight text-ink">{p.name}</span>
+                      <span className="num text-[0.92rem] font-black text-ok">{formatMoney(p.sellingPrice, currency)}</span>
+                      <span
+                        className={`num rounded-full px-2 py-0.5 text-[0.64rem] font-bold ${
+                          soldOut ? 'bg-danger/12 text-danger' : low ? 'bg-warn/12 text-warn' : 'bg-surface-3 text-ink-muted'
+                        }`}
+                      >
+                        {soldOut ? t('outOfStock') : `${t('stock')}: ${p.stockQuantity}`}
                       </span>
                     </button>
                   );
                 })}
               </div>
             )}
-          </Card>
-
-          {/* Desktop checkout column */}
-          <div className="hidden min-w-0 lg:sticky lg:top-0 lg:flex lg:flex-col lg:gap-4">
-            <Card
-              padded={false}
-              title={`${t('cart')} (${cart.length})`}
-              icon="cart"
-              actions={
-                cart.length > 0 ? (
-                  <Button size="sm" variant="ghost" icon="trash" onClick={() => { setCart([]); setFormError(''); }}>
-                    {t('clearCart')}
-                  </Button>
-                ) : undefined
-              }
-            >
-              {cart.length === 0 ? (
-                <EmptyState icon="cart" title={t('emptyCart')} hint={t('cartEmptyHint')} />
-              ) : (
-                cartRows
-              )}
-            </Card>
-            <Card title={t('completeSale')} icon="wallet">
-              {checkout}
-            </Card>
           </div>
-        </div>
+        </section>
+
+        {/* Cart (desktop) */}
+        <section className="panel hidden min-h-0 flex-col overflow-hidden rounded-lg border border-line shadow-1 lg:flex">
+          {cartPanel()}
+        </section>
+
+        {/* Cart (phone) — always on the page: a slim strip while empty, the full cart once it has lines */}
+        <section className={`panel flex min-h-0 flex-col overflow-hidden rounded-lg border border-line shadow-1 lg:hidden ${cart.length === 0 ? '' : 'max-h-[50dvh]'}`}>
+          {cart.length === 0 ? (
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <span className="flex shrink-0 items-center gap-2 text-[0.86rem] font-extrabold text-ink">
+                <Icon name="cart" size={16} className="text-brand" />
+                {t('cart')} <span className="num text-ink-muted">(0)</span>
+              </span>
+              <span className="truncate text-[0.72rem] font-semibold text-ink-muted">{t('cartEmptyHint')}</span>
+            </div>
+          ) : (
+            cartPanel()
+          )}
+        </section>
       </div>
 
-      {/* Mobile floating cart summary — sits above the bottom navigation */}
-      {cart.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setCartSheet(true)}
-          className="no-print anim-pop fixed inset-x-3 bottom-[calc(5rem_+_env(safe-area-inset-bottom,0px))] z-30 flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 shadow-2 lg:hidden"
-        >
-          <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand/10 text-brand">
-            <Icon name="cart" size={19} />
-            <span className="num absolute -top-1.5 -end-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 text-[0.64rem] font-black text-brand-contrast">
-              {cart.length}
-            </span>
-          </span>
-          <span className="min-w-0 flex-1 text-start">
-            <span className="block text-[0.68rem] font-bold text-ink-muted">{t('total')}</span>
-            <span className="num block truncate text-[1rem] font-black text-ink">{formatMoney(total, currency)}</span>
-          </span>
-          <span className="shrink-0 rounded-md bg-brand px-3.5 py-2 text-[0.8rem] font-bold text-brand-contrast shadow-brand">
-            {t('showCart')}
-          </span>
-        </button>
-      )}
+      {/* Checkout: payment method + customer + installment plan */}
+      <Modal
+        open={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+        title={t('completeSale')}
+        subtitle={`${totalQty} × ${t('products')} · ${formatMoney(total, currency)}`}
+        icon="wallet"
+        wide
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCheckoutOpen(false)}>{t('cancel')}</Button>
+            {saleType === 'CASH' ? (
+              <Button
+                variant="success"
+                icon="check"
+                loading={saving}
+                disabled={cart.length === 0 || !!discountError || !!receivedError}
+                onClick={completeCash}
+              >
+                {t('completeSale')} — {formatMoney(total, currency)}
+              </Button>
+            ) : (
+              <Button
+                icon="check"
+                loading={saving}
+                disabled={!plan || !customer}
+                onClick={completeInstallment}
+              >
+                {t('completeSale')} — {formatMoney(total, currency)}
+              </Button>
+            )}
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="mb-1.5 text-[0.78rem] font-bold text-ink-2">{t('paymentMethod')}</p>
+            <div className="grid grid-cols-2 gap-1 rounded-lg border border-line bg-surface-2 p-1">
+              {(['CASH', 'INSTALLMENT'] as SaleType[]).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => {
+                    setSaleType(st);
+                    setFormError('');
+                    if (st === 'CASH') setCustomer(null);
+                  }}
+                  className={`flex h-9.5 items-center justify-center gap-2 rounded-md text-[0.8rem] font-extrabold transition-all duration-150 ${
+                    saleType === st ? 'bg-brand text-brand-contrast shadow-brand' : 'text-ink-muted hover:text-ink'
+                  }`}
+                >
+                  <Icon name={st === 'CASH' ? 'banknote' : 'calendar'} size={15} />
+                  {st === 'CASH' ? t('cashSale') : t('installmentSale')}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      {/* Mobile cart sheet */}
-      <Modal open={cartSheet} onClose={() => setCartSheet(false)} title={`${t('cart')} (${cart.length})`} icon="cart">
-        <div className="flex flex-col gap-4">
-          {cart.length === 0 ? (
-            <EmptyState icon="cart" title={t('emptyCart')} hint={t('cartEmptyHint')} />
+          {saleType === 'CASH' ? (
+            <>
+              <Field label={t('receivedAmount')} error={receivedError}>
+                <span className="flex gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    dir="ltr"
+                    inputMode="decimal"
+                    className="num flex-1"
+                    value={receivedS}
+                    placeholder={formatMoney(total, currency)}
+                    onChange={(e) => { setReceivedS(e.target.value); setFormError(''); }}
+                  />
+                  <Button variant="secondary" className="shrink-0" onClick={() => setReceivedS(String(total))}>
+                    {t('exactAmount')}
+                  </Button>
+                </span>
+              </Field>
+              {changeDue > 0 && (
+                <div className="flex items-center justify-between rounded-lg border border-ok/25 bg-ok/12 px-3 py-2">
+                  <span className="flex items-center gap-1.5 text-[0.78rem] font-bold text-ok">
+                    <Icon name="banknote" size={14} /> {t('changeDue')}
+                  </span>
+                  <span className="num text-[0.95rem] font-black text-ok">{formatMoney(changeDue, currency)}</span>
+                </div>
+              )}
+            </>
           ) : (
-            <div className="rounded-lg border border-line">{cartRows}</div>
+            <>
+              <button
+                type="button"
+                onClick={() => { setCustSearch(''); setCustomerModal(true); }}
+                className="flex w-full items-center gap-2.5 rounded-md border border-line bg-surface-2 px-3 py-2 text-start transition-colors hover:border-line-strong"
+              >
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-brand/10 text-brand">
+                  <Icon name="user" size={15} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[0.66rem] font-bold text-ink-muted">{t('customer')}</span>
+                  <span className="block truncate text-[0.84rem] font-extrabold text-ink">
+                    {customer ? customer.fullName : t('walkInCustomer')}
+                  </span>
+                </span>
+                <Icon name="chevron-start" size={14} className="shrink-0 text-ink-muted" />
+              </button>
+              {!customer && (
+                <p className="flex items-center gap-1 text-[0.72rem] font-bold text-warn">
+                  <Icon name="alert" size={12} /> {t('customerRequiredInstallment')}
+                </p>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label={t('downPayment')} error={downNum > total ? t('downPaymentExceeds') : undefined}>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={total}
+                    step="0.01"
+                    dir="ltr"
+                    inputMode="decimal"
+                    className="num"
+                    value={downS}
+                    placeholder="0.00"
+                    onChange={(e) => setDownS(e.target.value)}
+                  />
+                </Field>
+                <Field label={t('numberOfInstallments')}>
+                  <Select value={String(numInstallments)} onChange={(e) => setNumInstallments(Number(e.target.value))}>
+                    {INSTALLMENT_OPTIONS.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={t('firstDueDate')} className="sm:col-span-2">
+                  <Input type="date" dir="ltr" value={firstDue} onChange={(e) => setFirstDue(e.target.value)} />
+                </Field>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface-2 px-3 py-2.5">
+                <span className="flex-1 text-[0.78rem] font-semibold text-ink-2">
+                  {t('financedAmount')}:{' '}
+                  <b className="num text-ink">{plan ? formatMoney(plan.financedAmount, currency) : '—'}</b>
+                </span>
+                <span className="flex-1 text-[0.78rem] font-semibold text-ink-2">
+                  {t('installmentAmount')}:{' '}
+                  <b className="num text-brand">{plan ? formatMoney(plan.installmentAmount, currency) : '—'}</b>
+                </span>
+              </div>
+
+              {installmentError && (
+                <p className="flex items-center gap-1.5 rounded-md border border-danger/25 bg-danger/12 px-2.5 py-1.5 text-[0.74rem] font-bold text-danger">
+                  <Icon name="alert" size={13} /> {installmentError}
+                </p>
+              )}
+
+              <div className="scroll-y max-h-56 overflow-y-auto rounded-lg border border-line">
+                <table className="w-full border-collapse">
+                  <thead className="sticky top-0 z-[1]">
+                    <tr className="bg-surface-2">
+                      <th className="border-b border-line px-3 py-2 text-start text-[0.68rem] font-extrabold uppercase tracking-wide text-ink-muted">#</th>
+                      <th className="border-b border-line px-3 py-2 text-start text-[0.68rem] font-extrabold uppercase tracking-wide text-ink-muted">{t('dueDate')}</th>
+                      <th className="border-b border-line px-3 py-2 text-end text-[0.68rem] font-extrabold uppercase tracking-wide text-ink-muted">{t('amountDue')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(plan?.drafts ?? []).map((d) => (
+                      <tr key={d.installmentNumber} className="transition-colors hover:bg-surface-2/70">
+                        <td className="num border-b border-line/70 px-3 py-2 text-[0.8rem] font-bold text-ink-muted">{d.installmentNumber}</td>
+                        <td className="num border-b border-line/70 px-3 py-2 text-[0.8rem] font-semibold text-ink">{formatDate(d.dueDate)}</td>
+                        <td className="num border-b border-line/70 px-3 py-2 text-end text-[0.8rem] font-black text-ink">{formatMoney(d.amountDue, currency)}</td>
+                      </tr>
+                    ))}
+                    {!plan && (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-6 text-center text-[0.8rem] font-semibold text-ink-muted">{t('noData')}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
-          {checkout}
+
+          {formError && (
+            <p className="flex items-center gap-1.5 rounded-md border border-danger/25 bg-danger/12 px-2.5 py-1.5 text-[0.74rem] font-bold text-danger">
+              <Icon name="alert" size={13} /> {formError}
+            </p>
+          )}
         </div>
       </Modal>
 
@@ -750,102 +803,6 @@ export function PosPage() {
             <li className="px-3 py-6 text-center text-[0.8rem] font-semibold text-ink-muted">{t('noResults')}</li>
           )}
         </ul>
-      </Modal>
-
-      {/* Installment plan */}
-      <Modal
-        open={installmentModal}
-        onClose={() => setInstallmentModal(false)}
-        title={t('installmentSale')}
-        subtitle={t('schedulePreview')}
-        icon="calendar"
-        wide
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setInstallmentModal(false)}>{t('cancel')}</Button>
-            <Button icon="check" loading={saving} disabled={!plan} onClick={completeInstallment}>
-              {t('completeSale')}
-            </Button>
-          </>
-        }
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('total')}>
-            <Input readOnly className="num" dir="ltr" value={formatMoney(total, currency)} />
-          </Field>
-          <Field label={t('downPayment')} error={downNum > total ? t('downPaymentExceeds') : undefined}>
-            <Input
-              type="number"
-              min={0}
-              max={total}
-              step="0.01"
-              dir="ltr"
-              inputMode="decimal"
-              className="num"
-              value={downS}
-              placeholder="0.00"
-              onChange={(e) => setDownS(e.target.value)}
-            />
-          </Field>
-          <Field label={t('numberOfInstallments')}>
-            <Select value={String(numInstallments)} onChange={(e) => setNumInstallments(Number(e.target.value))}>
-              {INSTALLMENT_OPTIONS.map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t('firstDueDate')}>
-            <Input type="date" dir="ltr" value={firstDue} onChange={(e) => setFirstDue(e.target.value)} />
-          </Field>
-          <Field label={t('frequency')} className="sm:col-span-2">
-            <Select value={frequency} onChange={(e) => setFrequency(e.target.value as Frequency)}>
-              <option value="MONTHLY">{t('monthly')}</option>
-            </Select>
-          </Field>
-
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface-2 px-3 py-2.5 sm:col-span-2">
-            <span className="flex-1 text-[0.78rem] font-semibold text-ink-2">
-              {t('financedAmount')}:{' '}
-              <b className="num text-ink">{plan ? formatMoney(plan.financedAmount, currency) : '—'}</b>
-            </span>
-            <span className="flex-1 text-[0.78rem] font-semibold text-ink-2">
-              {t('installmentAmount')}:{' '}
-              <b className="num text-brand">{plan ? formatMoney(plan.installmentAmount, currency) : '—'}</b>
-            </span>
-          </div>
-
-          {installmentError && (
-            <p className="flex items-center gap-1.5 rounded-md border border-danger/25 bg-danger/12 px-2.5 py-1.5 text-[0.74rem] font-bold text-danger sm:col-span-2">
-              <Icon name="alert" size={13} /> {installmentError}
-            </p>
-          )}
-
-          <div className="scroll-y max-h-60 overflow-y-auto rounded-lg border border-line sm:col-span-2">
-            <table className="w-full border-collapse">
-              <thead className="sticky top-0 z-[1]">
-                <tr className="bg-surface-2">
-                  <th className="border-b border-line px-3 py-2 text-start text-[0.68rem] font-extrabold uppercase tracking-wide text-ink-muted">#</th>
-                  <th className="border-b border-line px-3 py-2 text-start text-[0.68rem] font-extrabold uppercase tracking-wide text-ink-muted">{t('dueDate')}</th>
-                  <th className="border-b border-line px-3 py-2 text-end text-[0.68rem] font-extrabold uppercase tracking-wide text-ink-muted">{t('amountDue')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(plan?.drafts ?? []).map((d) => (
-                  <tr key={d.installmentNumber} className="transition-colors hover:bg-surface-2/70">
-                    <td className="num border-b border-line/70 px-3 py-2 text-[0.8rem] font-bold text-ink-muted">{d.installmentNumber}</td>
-                    <td className="num border-b border-line/70 px-3 py-2 text-[0.8rem] font-semibold text-ink">{formatDate(d.dueDate)}</td>
-                    <td className="num border-b border-line/70 px-3 py-2 text-end text-[0.8rem] font-black text-ink">{formatMoney(d.amountDue, currency)}</td>
-                  </tr>
-                ))}
-                {!plan && (
-                  <tr>
-                    <td colSpan={3} className="px-3 py-6 text-center text-[0.8rem] font-semibold text-ink-muted">{t('noData')}</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
       </Modal>
 
       {/* Scanner source picker */}
@@ -895,8 +852,10 @@ export function PosPage() {
                 {t('paper8x11')}
               </Button>
             </div>
-            <div className="scroll-y flex max-h-[60vh] justify-center overflow-auto rounded-lg border border-dashed border-line-strong bg-surface-2 p-3">
-              <InvoicePrint saleId={invoice.saleId} paper={invoicePaper} />
+            <div className="scroll-y flex max-h-[60vh] justify-start overflow-auto rounded-lg border border-dashed border-line-strong bg-surface-2 p-3">
+              <PaperFit width={invoicePaper === 'A4' ? '210mm' : '80mm'}>
+                <InvoicePrint saleId={invoice.saleId} paper={invoicePaper} />
+              </PaperFit>
             </div>
           </div>
         )}

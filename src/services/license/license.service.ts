@@ -62,7 +62,7 @@ export async function appVersion(): Promise<string> {
   } catch {
     /* bridge unavailable */
   }
-  return '1.0.3';
+  return import.meta.env.VITE_APP_VERSION ?? 'dev';
 }
 
 /** Stable code shown to the client and bound into every licence. */

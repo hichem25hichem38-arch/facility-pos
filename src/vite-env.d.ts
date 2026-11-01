@@ -5,6 +5,8 @@ interface ImportMetaEnv {
   readonly VITE_BUILD_EDITION?: 'full' | 'trial';
   readonly VITE_NO_DEMO?: string;
   readonly VITE_IS_BETA?: string;
+  /** Injected from package.json at build time by vite.config.ts. */
+  readonly VITE_APP_VERSION?: string;
 }
 
 interface SyncServerInfo {

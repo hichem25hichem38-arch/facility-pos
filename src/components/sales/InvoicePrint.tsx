@@ -33,9 +33,9 @@ const CSS = `
 .inv-t .inv-logo { width:12mm; height:12mm; }
 .inv-logo-ph { display:flex; align-items:center; justify-content:center; border:1px dashed #999; color:#555; font-size:6pt; }
 .inv-store { flex:1; min-width:0; }
-.inv-name { font-size:14pt; font-weight:800; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.inv-name { font-size:14pt; font-weight:800; line-height:1.15; overflow-wrap:break-word; }
 .inv-t .inv-name { font-size:9pt; }
-.inv-meta { font-size:7.5pt; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:0.6mm; }
+.inv-meta { font-size:7.5pt; color:#333; overflow-wrap:break-word; margin-top:0.6mm; }
 .inv-t .inv-meta { font-size:5.5pt; }
 .inv-kind { font-size:7pt; color:#666; margin-top:0.4mm; }
 .inv-t .inv-kind { font-size:5pt; }
@@ -44,7 +44,8 @@ const CSS = `
 .inv-nums b { font-weight:800; }
 .inv-cust { display:flex; justify-content:space-between; gap:2mm; font-size:8.5pt; border:0.8px solid #bbb; padding:1.8mm 2mm; margin-bottom:3mm; background:#f5f5f5; flex-shrink:0; }
 .inv-t .inv-cust { font-size:6pt; padding:1.2mm 1.5mm; margin-bottom:2mm; }
-.inv-cust > div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.inv-cust > div { overflow-wrap:break-word; }
+.inv-cust > div:last-child { flex-shrink:0; }
 .inv-items { width:100%; border-collapse:collapse; table-layout:fixed; font-size:8.5pt; margin-bottom:3mm; }
 .inv-t .inv-items { font-size:6pt; margin-bottom:2mm; }
 .inv-items th { background:#eee; border:0.6px solid #999; padding:1.4mm; font-weight:800; font-size:7.5pt; }
@@ -52,7 +53,8 @@ const CSS = `
 .inv-items td { border:0.6px solid #bbb; padding:1.3mm 1.4mm; vertical-align:middle; }
 .inv-t .inv-items td { padding:0.9mm 1mm; }
 .inv-items tr { break-inside:avoid; page-break-inside:avoid; }
-.inv-item-name { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.inv-item-name { font-weight:700; overflow-wrap:break-word; }
+.inv-t .inv-item-name { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .inv-item-code { font-family:var(--font-mono, monospace); font-size:6pt; color:#555; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .inv-t .inv-item-code { font-size:4.5pt; }
 .inv-sum-wrap { display:flex; justify-content:flex-end; margin-bottom:3mm; flex-shrink:0; }

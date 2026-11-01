@@ -1,10 +1,22 @@
 import { io, type Socket } from 'socket.io-client';
+import { registerSyncPusher, withSuppressedLocalWrites } from './sync-state';
 
 let socket: Socket | null = null;
 let lastWsUrl: string | null = null;
 let connectingUrl: string | null = null;
 let desktopUrl: string | null = null;
 let deviceIdCache = '';
+
+/* ------------- snapshot sync over the same long-lived socket ------------- */
+type Listener = () => void;
+type SyncApplier = (payload: unknown) => Promise<void>;
+
+let syncApplier: SyncApplier | null = null;
+let applyQueue: Promise<void> = Promise.resolve();
+let lastAppliedAt = -1;
+let pushAfterNextApply = false;
+const appliedListeners = new Set<Listener>();
+const ackListeners = new Set<Listener>();
 
 const STORAGE_KEY = 'pos:desktopWsUrl';
 
@@ -50,6 +62,8 @@ export function setStoredWsUrl(url: string | null) {
   }
   socket = null;
   lastWsUrl = null;
+  // A different relay keeps its own clock: forget what was applied from the old one.
+  lastAppliedAt = -1;
 }
 
 export async function getWsUrl(): Promise<string | null> {
@@ -90,7 +104,76 @@ export function getWsUrlSync(): string | null {
 export async function initScanSync(): Promise<void> {
   await resolveDeviceId();
   await getWsUrl();
+  registerSyncPusher(() => pushLocalSnapshot());
   ensureSocketSync();
+}
+
+/** Writes a peer snapshot into the local database (registered by the app bootstrap). */
+export function registerSyncApplier(applier: SyncApplier): void {
+  syncApplier = applier;
+}
+
+/** Notified after an incoming snapshot has been stored. */
+export function onSyncApplied(cb: Listener): () => void {
+  appliedListeners.add(cb);
+  return () => { appliedListeners.delete(cb); };
+}
+
+/** Notified when the relay confirms it merged our snapshot. */
+export function onSyncPushed(cb: Listener): () => void {
+  ackListeners.add(cb);
+  return () => { ackListeners.delete(cb); };
+}
+
+/**
+ * Pull the relay snapshot; our own data is pushed right after it lands, so the
+ * merge order is always peer-first, local-second.
+ */
+export function requestFullSync(): boolean {
+  const s = ensureSocketSync();
+  if (!s) return false;
+  pushAfterNextApply = true;
+  if (s.connected) s.emit('pull');
+  else s.connect();
+  return true;
+}
+
+async function pushLocalSnapshot(): Promise<void> {
+  const s = ensureSocketSync();
+  if (!s?.connected) return;
+  try {
+    const { BackupService } = await import('@/services/backup/backup.service');
+    const payload = await new BackupService().createSyncPayload();
+    s.emit('push', payload);
+  } catch {
+    /* snapshot unavailable: retry on the next local write */
+  }
+}
+
+function applyRemote(payload: unknown): void {
+  applyQueue = applyQueue
+    .then(async () => {
+      if (!payload || typeof payload !== 'object') return;
+      const at = Number((payload as { exportedAt?: number }).exportedAt ?? 0);
+      if (at && at <= lastAppliedAt) return;
+      const apply = syncApplier;
+      if (apply) {
+        try {
+          await withSuppressedLocalWrites(() => apply(payload));
+        } catch {
+          /* keep local data when the peer snapshot is unusable */
+        }
+        if (at) lastAppliedAt = at;
+      }
+      if (pushAfterNextApply) {
+        pushAfterNextApply = false;
+        await pushLocalSnapshot();
+      }
+      appliedListeners.forEach((cb) => cb());
+    })
+    .catch(() => {
+      pushAfterNextApply = false;
+    });
 }
 
 function createSocket(url: string): Socket {
@@ -103,6 +186,11 @@ function createSocket(url: string): Socket {
   });
   s.on('connect', () => {
     connectingUrl = null;
+    requestFullSync();
+  });
+  s.on('sync', applyRemote);
+  s.on('sync:done', () => {
+    ackListeners.forEach((cb) => cb());
   });
   s.on('connect_error', () => {
     /* retried automatically */

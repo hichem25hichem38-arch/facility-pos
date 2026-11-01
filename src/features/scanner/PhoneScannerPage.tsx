@@ -173,7 +173,7 @@ export function PhoneScannerPage() {
               localProduct ? (
                 <div className="flex items-center gap-3 rounded-lg border border-ok/25 bg-ok/12 p-3">
                   {localProduct.image ? (
-                    <img src={localProduct.image} alt="" className="h-14 w-14 shrink-0 rounded-md border border-line object-cover" />
+                    <img src={localProduct.image} alt="" className="h-14 w-14 shrink-0 rounded-md border border-line bg-surface-3 object-contain" />
                   ) : (
                     <span className="grid h-14 w-14 shrink-0 place-items-center rounded-md bg-surface text-ink-muted">
                       <Icon name="image" size={20} strokeWidth={1.6} />

@@ -1,102 +1,110 @@
-import { getDb, getDeviceId } from '@/database/db';
+import { getDb } from '@/database/db';
+import { isLocalWriteSuppressed, markLocalWrite } from './sync-state';
+import { onSyncPushed, requestFullSync } from './scan.service';
 
-export type QueuedOperation = {
-  id: string;
-  entity: string;
-  entityId: string;
-  operation: 'CREATE' | 'UPDATE' | 'DELETE';
-  queuedAt: number;
-};
+export type SyncFailure = 'unpaired' | 'unreachable' | 'timeout';
+export type SyncOutcome = { ok: true } | { ok: false; reason: SyncFailure };
 
-/** Tables that carry syncStatus/version/deviceId. */
-const SYNCABLE_TABLES = ['products', 'categories', 'customers', 'sales', 'payments', 'installmentPlans'];
+/** Settings keys owned by one device: their deletion must not travel. */
+const LOCAL_SETTING_KEYS = new Set([
+  'deviceId',
+  'licenseKey',
+  'licensedDeviceId',
+  'licenseExpiry',
+  'licenseStore',
+  'licenseLastSeen',
+  'seeded-users',
+  'lastAutoBackupAt',
+  'lastAutoBackupSizeKB',
+]);
+
+/** Never synced, so no tombstone and no push for their writes. */
+const LOCAL_TABLES = new Set(['users', 'userCredentials', 'roles', 'syncTombstones']);
+
+/** How long a local edit waits before its snapshot is pushed. */
+const PUSH_DEBOUNCE_MS = 6000;
 
 /**
  * Sync engine.
- * Locally every entity records syncStatus/deviceId/version; a full snapshot is
- * exchanged with the desktop relay over WebSocket (LAN only) or by file.
- * Conflict policy: last write wins on updatedAt, conflicts logged locally.
+ * The long-lived LAN socket owns the transport: a device pulls the relay
+ * snapshot, applies it, then pushes its own. Every table travels except the
+ * accounts on this device, and every local write schedules one debounced push,
+ * so carts, sales, payments, stock moves and settings all reach the peer — not
+ * only products.
  */
 export class SyncService {
-  async collectPending(): Promise<QueuedOperation[]> {
-    const db = getDb();
-    const deviceId = await getDeviceId();
-    const pending: QueuedOperation[] = [];
-    for (const table of SYNCABLE_TABLES) {
-      const rows = await db
-        .table(table)
-        .filter((row: { syncStatus?: string }) => row.syncStatus !== 'SYNCED')
-        .toArray() as { id: string; deviceId?: string }[];
-      for (const row of rows) {
-        pending.push({
-          id: row.id,
-          entity: table,
-          entityId: row.id,
-          operation: row.deviceId === deviceId ? 'CREATE' : 'UPDATE',
-          queuedAt: Date.now(),
-        });
-      }
-    }
-    return pending;
-  }
-
-  get enabled(): boolean {
-    return import.meta.env.VITE_SYNC_ENABLED === 'true';
-  }
-
-  async sync(): Promise<boolean> {
-    const wsUrl = await this.resolveWsUrl();
-    if (!wsUrl) return false;
-    return this.syncViaWs(wsUrl);
-  }
-
-  /** Desktop uses its own bridge URL (which carries the pairing token); phones use the paired URL. */
-  private async resolveWsUrl(): Promise<string | null> {
+  async sync(): Promise<SyncOutcome> {
     const { getWsUrl } = await import('./scan.service');
-    return getWsUrl();
-  }
-
-  private async syncViaWs(wsUrl: string): Promise<boolean> {
-    const { BackupService } = await import('@/services/backup/backup.service');
-    const { LanSyncService } = await import('./lan-sync.service');
-    const payload = await new BackupService().createSyncPayload();
-    const { io } = await import('socket.io-client');
+    if (!(await getWsUrl())) return { ok: false, reason: 'unpaired' };
     return new Promise((resolve) => {
-      let merged = false;
-      let socket: ReturnType<typeof io> | null = null;
-      const timer = setTimeout(() => {
-        try { socket?.disconnect(); } catch { /* ignore */ }
-        resolve(merged);
-      }, 7000);
-      try {
-        socket = io(wsUrl, { transports: ['websocket', 'polling'], reconnectionAttempts: 2, timeout: 4000 });
-        socket.on('connect', () => {
-          socket!.emit('pull');
-          setTimeout(() => socket!.emit('push', payload), 500);
-        });
-        socket.on('sync', async (data: unknown) => {
-          try {
-            const p = data as { tables?: unknown };
-            if (p?.tables) {
-              await new LanSyncService().importPayload(JSON.stringify(data));
-              merged = true;
-            }
-          } catch {
-            /* keep local data when the peer snapshot is unusable */
-          }
-          clearTimeout(timer);
-          try { socket!.disconnect(); } catch { /* ignore */ }
-          resolve(true);
-        });
-        socket.on('connect_error', () => {
-          clearTimeout(timer);
-          try { socket!.disconnect(); } catch { /* ignore */ }
-          resolve(false);
-        });
-      } catch {
+      let settled = false;
+      const finish = (outcome: SyncOutcome) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
-        resolve(false);
-      }
+        off();
+        resolve(outcome);
+      };
+      const off = onSyncPushed(() => finish({ ok: true }));
+      const timer = setTimeout(() => finish({ ok: false, reason: 'timeout' }), 25000);
+      if (!requestFullSync()) finish({ ok: false, reason: 'unreachable' });
+    });
+  }
+}
+
+/**
+ * Watches every table so a local write pushes the whole snapshot and a hard
+ * delete leaves a tombstone the peers can replay. Registered once at startup.
+ */
+export function registerSyncWatch(db = getDb()): void {
+  for (const table of db.tables) {
+    const name = table.name;
+    if (LOCAL_TABLES.has(name)) continue;
+    const isSettings = name === 'settings';
+
+    const skipped = (key: unknown) => {
+      if (isLocalWriteSuppressed()) return true;
+      if (!isSettings || typeof key !== 'string') return false;
+      // Device-local licence state and the daily backup archives never travel,
+      // so they must not schedule a push either.
+      return LOCAL_SETTING_KEYS.has(key) || key.startsWith('autoBackup-');
+    };
+
+    /**
+     * IndexedDB cannot reach another store from inside the row's own
+     * transaction, so the tombstone lands on the next macrotask — after the
+     * delete or rewrite committed. Best effort: a lost tombstone only delays
+     * the cleanup on the peers, it never corrupts data.
+     */
+    const recordTombstone = (key: unknown, deleted: boolean) => {
+      setTimeout(() => {
+        if (isLocalWriteSuppressed()) return;
+        const id = `${name}:${key}`;
+        void (async () => {
+          try {
+            if (deleted) await db.syncTombstones.put({ id, tableName: name, rowId: String(key), deletedAt: Date.now() });
+            else await db.syncTombstones.delete(id);
+          } catch {
+            /* storage unavailable */
+          }
+        })();
+      }, 0);
+    };
+
+    table.hook('creating', (primKey) => {
+      if (skipped(primKey)) return;
+      recordTombstone(primKey, false);
+      markLocalWrite(PUSH_DEBOUNCE_MS);
+    });
+    table.hook('updating', (_changes, _obj, primKey) => {
+      if (skipped(primKey)) return;
+      recordTombstone(primKey, false);
+      markLocalWrite(PUSH_DEBOUNCE_MS);
+    });
+    table.hook('deleting', (primKey) => {
+      if (skipped(primKey)) return;
+      recordTombstone(primKey, true);
+      markLocalWrite(PUSH_DEBOUNCE_MS);
     });
   }
 }

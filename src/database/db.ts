@@ -3,7 +3,7 @@ import { DEVICE_ID_KEY } from '@/constants';
 import type {
   Product, Category, Customer, Sale, SaleItem, InstallmentPlan,
   Installment, Payment, InventoryTransaction, User, UserCredential,
-  Role, AuditLog, StoreSettings,
+  Role, AuditLog, StoreSettings, SyncTombstone,
 } from '@/types';
 
 export class PosDatabase extends Dexie {
@@ -21,6 +21,7 @@ export class PosDatabase extends Dexie {
   roles!: Table<Role, string>;
   auditLogs!: Table<AuditLog, string>;
   settings!: Table<StoreSettings, string>;
+  syncTombstones!: Table<SyncTombstone, string>;
 
   constructor() {
     super('installment-pos');
@@ -39,6 +40,10 @@ export class PosDatabase extends Dexie {
       roles: 'id, &name',
       auditLogs: 'id, entity, entityId, createdAt, userId',
       settings: '&key',
+    });
+    // v2: deletions must reach the other devices too.
+    this.version(2).stores({
+      syncTombstones: 'id, tableName, deletedAt',
     });
   }
 }

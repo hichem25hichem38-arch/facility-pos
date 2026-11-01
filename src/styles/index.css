@@ -351,6 +351,17 @@
   .print-only {
     display: block !important;
   }
+  /* PaperFit only shrinks a sheet for the screen; the paper keeps its real size. */
+  .paper-fit {
+    position: static !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .paper-fit-inner {
+    position: static !important;
+    width: auto !important;
+    transform: none !important;
+  }
 }
 
 .print-only {

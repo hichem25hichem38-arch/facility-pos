@@ -95,7 +95,7 @@ export function ProductDetailModal({ open, onClose, barcode }: ProductDetailModa
               <img
                 src={product.image}
                 alt={product.name}
-                className="h-44 w-full rounded-lg border border-line object-cover"
+                className="h-44 w-full rounded-lg border border-line bg-surface-3 object-contain"
               />
             ) : (
               <span className="grid h-44 w-full place-items-center rounded-lg border border-dashed border-line-strong bg-surface-2 text-ink-muted">

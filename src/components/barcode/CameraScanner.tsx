@@ -3,74 +3,171 @@ import { Button } from '@/components/ui';
 import { Icon } from '@/components/icons';
 import { useT } from '@/hooks/useT';
 
+type NativeDetector = {
+  detect(source: HTMLVideoElement): Promise<{ rawValue: string }[]>;
+};
+
+type DecodeFrame = (canvas: HTMLCanvasElement) => string | null;
+
+/* Chromium ships BarcodeDetector only on Android, ChromeOS and macOS. Electron
+   on Windows and the Android WebView fall back to the bundled ZXing decoder. */
+function createNativeDetector(): NativeDetector | null {
+  const Ctor = (window as unknown as {
+    BarcodeDetector?: new (options?: { formats?: string[] }) => NativeDetector;
+  }).BarcodeDetector;
+  if (!Ctor) return null;
+  for (const formats of [
+    ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'qr_code'],
+    ['ean_13', 'code_128', 'qr_code'],
+  ]) {
+    try {
+      return new Ctor({ formats });
+    } catch {
+      /* this engine rejects part of the format list — try the shorter one */
+    }
+  }
+  return null;
+}
+
+async function createZxingDecoder(): Promise<DecodeFrame | null> {
+  try {
+    const zx = await import('@zxing/library');
+    const hints = new Map();
+    hints.set(zx.DecodeHintType.POSSIBLE_FORMATS, [
+      zx.BarcodeFormat.EAN_13, zx.BarcodeFormat.EAN_8,
+      zx.BarcodeFormat.UPC_A, zx.BarcodeFormat.UPC_E,
+      zx.BarcodeFormat.CODE_128, zx.BarcodeFormat.CODE_39,
+      zx.BarcodeFormat.ITF, zx.BarcodeFormat.QR_CODE,
+    ]);
+    const reader = new zx.BrowserMultiFormatReader(hints);
+    return (canvas) => {
+      try {
+        const luminance = new zx.HTMLCanvasElementLuminanceSource(canvas);
+        const result = reader.decodeBitmap(new zx.BinaryBitmap(new zx.HybridBinarizer(luminance)));
+        return result.getText().trim() || null;
+      } catch {
+        /* no code in this frame */
+        return null;
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function CameraScanner({ onDetected, onClose, continuous }: { onDetected: (value: string) => void; onClose: () => void; continuous?: boolean }) {
   const { t } = useT();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const detectedRef = useRef(onDetected);
+  const continuousRef = useRef(!!continuous);
+  detectedRef.current = onDetected;
+  continuousRef.current = !!continuous;
+
   const [error, setError] = useState('');
-  const [supported, setSupported] = useState(true);
-  const [noDetector, setNoDetector] = useState(false);
-  const lastRef = useRef<{ code: string; at: number } | null>(null);
+  const [unsupported, setUnsupported] = useState(false);
+  const [noDecoder, setNoDecoder] = useState(false);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
-    let raf = 0;
-    let detector: unknown = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
+    let finished = false;
+    let last = { code: '', at: 0 };
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const native = createNativeDetector();
+    let decodeFrame: DecodeFrame | null = null;
+    const decoderReady = native ? Promise.resolve(null) : createZxingDecoder();
+
+    const emit = (raw: string) => {
+      const now = Date.now();
+      if (last.code === raw && now - last.at < 1500) return;
+      last.code = raw;
+      last.at = now;
+      try { navigator.vibrate?.(80); } catch { /* not available */ }
+      detectedRef.current(raw);
+    };
+
+    const tick = async () => {
+      if (stopped || finished) return;
+      const video = videoRef.current;
+      if (!video || video.readyState < 2 || !video.videoWidth) {
+        timer = setTimeout(tick, 120);
+        return;
+      }
+      let raw: string | null = null;
+      try {
+        if (native) {
+          const results = await native.detect(video);
+          raw = results[0]?.rawValue?.trim() || null;
+        } else if (decodeFrame && ctx) {
+          const scale = Math.min(1, 800 / Math.max(video.videoWidth, video.videoHeight));
+          canvas.width = Math.round(video.videoWidth * scale);
+          canvas.height = Math.round(video.videoHeight * scale);
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          raw = decodeFrame(canvas);
+        }
+      } catch {
+        /* frame without a readable code */
+      }
+      if (stopped) return;
+      if (raw) {
+        emit(raw);
+        if (!continuousRef.current) { finished = true; return; }
+      }
+      if (native || decodeFrame) timer = setTimeout(tick, native ? 110 : 190);
+    };
 
     const start = async () => {
-      try {
-        const BD = (window as unknown as { BarcodeDetector?: new (opts: unknown) => { detect(v: HTMLVideoElement): Promise<{ rawValue: string }[]> } }).BarcodeDetector;
-        if (BD) {
-          try { detector = new BD({ formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'qr_code', 'upc_a', 'upc_e'] }); } catch { detector = new BD({ formats: ['ean_13', 'code_128', 'qr_code'] }); }
-        } else {
-          setNoDetector(true);
-        }
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-        const loop = async () => {
-          if (stopped) return;
-          if (!videoRef.current || videoRef.current.readyState < 2) { raf = requestAnimationFrame(loop); return; }
-          try {
-            if (detector) {
-              const res = await (detector as { detect(v: HTMLVideoElement): Promise<{ rawValue: string }[]> }).detect(videoRef.current);
-              const raw = res[0]?.rawValue?.trim();
-              if (raw) {
-                const now = Date.now();
-                if (!(lastRef.current && lastRef.current.code === raw && now - lastRef.current.at < 1200)) {
-                  lastRef.current = { code: raw, at: now };
-                  try { navigator.vibrate?.(80); } catch {}
-                  onDetected(raw);
-                  if (!continuous) return;
-                }
-              }
-            }
-          } catch { /* ignore */ }
-          raf = requestAnimationFrame(loop);
-        };
-        raf = requestAnimationFrame(loop);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (msg.includes('NotAllowed') || msg.includes('Permission')) setError('denied');
-        else if (!navigator.mediaDevices) { setSupported(false); setError('unsupported'); }
-        else setError(msg);
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setUnsupported(true);
+        setError('unsupported');
+        return;
       }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+      } catch (e) {
+        if (e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) setError('denied');
+        else if (e instanceof DOMException && (e.name === 'NotFoundError' || e.name === 'OverconstrainedError')) setError('unavailable');
+        else if (e instanceof DOMException && e.name === 'NotReadableError') setError('unavailable');
+        else setError(e instanceof Error ? e.message : String(e));
+        return;
+      }
+      if (stopped) {
+        stream.getTracks().forEach((tr) => tr.stop());
+        return;
+      }
+      const video = videoRef.current;
+      if (!video) return;
+      video.srcObject = stream;
+      try { await video.play(); } catch { /* the loop retries once data is ready */ }
+
+      decodeFrame = await decoderReady;
+      if (!native && !decodeFrame) setNoDecoder(true);
+      if (!stopped) timer = setTimeout(tick, 250);
     };
-    start();
+
+    start().catch(() => setError('unsupported'));
+
     return () => {
       stopped = true;
-      cancelAnimationFrame(raf);
+      if (timer) clearTimeout(timer);
       stream?.getTracks().forEach((tr) => tr.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onDetected, continuous]);
+  }, []);
 
   const errorText =
-    error === 'denied' ? t('cameraDenied') : error === 'unsupported' ? t('cameraUnsupported') : error;
+    error === 'denied' ? t('cameraDenied')
+      : error === 'unavailable' ? t('cameraUnavailable')
+        : error === 'unsupported' ? t('cameraUnsupported')
+          : error;
 
-  if (!supported) {
+  if (unsupported) {
     return (
       <div className="flex items-start gap-2.5 rounded-lg border border-danger/25 bg-danger/12 px-3 py-2.5">
         <span className="mt-0.5 shrink-0 text-danger"><Icon name="alert" size={16} /></span>
@@ -92,7 +189,7 @@ export function CameraScanner({ onDetected, onClose, continuous }: { onDetected:
         </div>
       </div>
 
-      {noDetector && (
+      {noDecoder && (
         <p className="flex items-start gap-1.5 rounded-lg border border-warn/25 bg-warn/12 px-3 py-2 text-[0.74rem] font-bold text-warn">
           <Icon name="alert" size={13} className="mt-0.5 shrink-0" />
           {t('cameraNoDetector')}

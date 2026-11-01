@@ -2,6 +2,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getDb } from '@/database/db';
 import { Button, EmptyState, Spinner } from '@/components/ui';
+import { PaperFit } from '@/components/common/PaperFit';
 import { useT } from '@/hooks/useT';
 import { useAppStore } from '@/app/store/app.store';
 import { SettingsService } from '@/services/settings/settings.service';
@@ -30,13 +31,13 @@ const CSS = `
 .ct-parties { display:flex; gap:4mm; margin-bottom:4mm; }
 .ct-party { flex:1; border:1px solid #999; padding:2.5mm 3mm; font-size:8.5pt; }
 .ct-party h4 { margin:0 0 1.5mm; font-size:9pt; font-weight:800; border-bottom:1px solid #bbb; padding-bottom:1mm; }
-.ct-party p { margin:0.7mm 0; }
+.ct-party p { margin:0.7mm 0; overflow-wrap:break-word; }
 .ct-party .lbl { font-weight:700; color:#333; }
 .ct-h { font-size:10pt; font-weight:800; margin:0 0 1.8mm; padding-bottom:1mm; border-bottom:1.5px solid #000; }
 .ct-sec { margin-bottom:4.5mm; break-inside:avoid; page-break-inside:avoid; }
 .ct-table { width:100%; border-collapse:collapse; font-size:8.5pt; table-layout:fixed; }
 .ct-table th { background:#eee; border:0.6px solid #999; padding:1.5mm; font-weight:800; font-size:8pt; }
-.ct-table td { border:0.6px solid #bbb; padding:1.4mm 1.6mm; vertical-align:middle; }
+.ct-table td { border:0.6px solid #bbb; padding:1.4mm 1.6mm; vertical-align:middle; overflow-wrap:break-word; }
 .ct-table tr { break-inside:avoid; page-break-inside:avoid; }
 .ct-c { text-align:center; }
 .ct-fin { display:flex; gap:4mm; }
@@ -130,25 +131,27 @@ export function ContractPage() {
         <Button icon="print" onClick={() => window.print()}>{t('printContract')}</Button>
       </div>
 
-      {/* Paper — on screen shown as a document, on paper full A4 */}
+      {/* Paper — on screen shown as a document fitted to the screen, on paper full A4 */}
       <div className="ct-screen no-print overflow-x-auto rounded-lg border border-line bg-surface-2 p-3 shadow-1">
-        <div className="ct mx-auto w-full max-w-[210mm] border border-line shadow-2 print:border-0 print:shadow-none">
-          <ContractDoc
-            sale={sale}
-            plan={plan}
-            customer={customer}
-            items={items}
-            installments={installments}
-            collected={collected}
-            remaining={remaining}
-            firstDue={firstDue}
-            settings={settings}
-            currency={currency}
-            dateLocale={dateLocale}
-            statusOf={statusOf}
-            t={t}
-          />
-        </div>
+        <PaperFit width="210mm">
+          <div className="ct border border-line shadow-2 print:border-0 print:shadow-none">
+            <ContractDoc
+              sale={sale}
+              plan={plan}
+              customer={customer}
+              items={items}
+              installments={installments}
+              collected={collected}
+              remaining={remaining}
+              firstDue={firstDue}
+              settings={settings}
+              currency={currency}
+              dateLocale={dateLocale}
+              statusOf={statusOf}
+              t={t}
+            />
+          </div>
+        </PaperFit>
       </div>
 
       {/* Real print root */}
