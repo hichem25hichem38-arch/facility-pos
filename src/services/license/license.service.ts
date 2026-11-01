@@ -65,7 +65,13 @@ export async function appVersion(): Promise<string> {
   return import.meta.env.VITE_APP_VERSION ?? 'dev';
 }
 
-/** Stable code shown to the client and bound into every licence. */
+/**
+ * Stable code shown to the client and bound into every licence.
+ *
+ * A code that is already stored is never replaced: licences are signed against
+ * it, so re-deriving one would lock out paying customers. Only fresh installs
+ * get the durable derivation below.
+ */
 export async function getDeviceId(): Promise<string> {
   if (cachedDeviceId) return cachedDeviceId;
   // Desktops derive this from the operating-system machine id, so clearing the
@@ -75,19 +81,57 @@ export async function getDeviceId(): Promise<string> {
     if (native && typeof native === 'string' && native.trim().length >= 4) {
       const clean = native.trim().toUpperCase();
       cachedDeviceId = clean;
-      try {
-        await getDb().settings.put({ key: DEVICE_ID_KEY, value: clean });
-      } catch {
-        /* db not ready */
-      }
+      await rememberDeviceId(clean);
       return clean;
     }
   } catch {
     /* bridge unavailable */
   }
+
+  const stored = await getDb().settings.get(DEVICE_ID_KEY);
+  if (stored && typeof stored.value === 'string') {
+    cachedDeviceId = stored.value;
+    return cachedDeviceId;
+  }
+
+  // A phone keeps its identity in the web storage, which the owner can wipe and
+  // the system can evict. Deriving the code from the platform id instead makes a
+  // reinstall or a cleared cache land on the same code the vendor already issued.
+  if (platformLabel() === 'android') {
+    const derived = await androidDeviceCode();
+    if (derived) {
+      cachedDeviceId = derived;
+      await rememberDeviceId(derived);
+      return derived;
+    }
+  }
+
   const { getDeviceId: getStoredDeviceId } = await import('@/database/db');
   cachedDeviceId = await getStoredDeviceId();
   return cachedDeviceId;
+}
+
+async function rememberDeviceId(value: string): Promise<void> {
+  try {
+    await getDb().settings.put({ key: DEVICE_ID_KEY, value });
+  } catch {
+    /* db not ready */
+  }
+}
+
+/** One-way short form of ANDROID_ID: stable per device, never the raw id. */
+async function androidDeviceCode(): Promise<string | null> {
+  try {
+    const { Device } = await import('@capacitor/device');
+    const { identifier } = await Device.getId();
+    if (typeof identifier !== 'string' || identifier.length < 8 || identifier === 'unknown') return null;
+    const digest = await crypto.subtle.digest('SHA-256', encoder.encode(`POS:${identifier}`));
+    const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    return `POS-${hex.slice(0, 8).toUpperCase()}`;
+  } catch {
+    /* plugin or WebCrypto unavailable: fall back to a stored random id */
+    return null;
+  }
 }
 
 export interface LicenseCheck {

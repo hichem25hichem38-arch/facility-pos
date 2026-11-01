@@ -1,7 +1,7 @@
 {
   "name": "installment-pos",
   "private": true,
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Installment POS & Inventory Management System - License activation required",
   "type": "module",
   "scripts": {
@@ -50,6 +50,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
+    "@capacitor/device": "^8.0.3",
     "@capacitor/filesystem": "^8.1.3",
     "@capacitor/share": "^8.0.1",
     "@zxing/library": "^0.21.3",

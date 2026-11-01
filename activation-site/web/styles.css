@@ -336,7 +336,7 @@ html:not([data-theme]) .live-dot { color: #047857; }
   overflow: hidden;
 }
 .table-scroll { overflow-x: auto; }
-table.clients { width: 100%; border-collapse: collapse; min-width: 1000px; }
+table.clients { width: 100%; border-collapse: collapse; min-width: 1080px; }
 table.clients th {
   text-align: start;
   font-size: 11.5px;

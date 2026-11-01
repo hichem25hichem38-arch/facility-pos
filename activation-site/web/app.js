@@ -35,6 +35,13 @@
     revoked: 'موقوف',
   };
 
+  const PLATFORM_LABEL = {
+    android: 'هاتف',
+    mobile: 'هاتف',
+    desktop: 'حاسوب',
+    web: 'متصفح',
+  };
+
   const EVENT_LABEL = {
     issue_code: 'إصدار كود',
     renew_code: 'كود تجديد',
@@ -237,6 +244,10 @@
     code.title = client.deviceId || '';
     device.append(code);
 
+    const system = document.createElement('td');
+    system.className = 'muted-cell';
+    system.textContent = PLATFORM_LABEL[String(client.platform || '').toLowerCase()] || '—';
+
     const duration = document.createElement('td');
     duration.className = 'num muted-cell';
     duration.textContent = client.durationDays === 0 ? 'دائم' : daysLabel(client.durationDays);
@@ -299,7 +310,7 @@
 
     actions.append(bar);
 
-    tr.append(name, store, phone, device, duration, expiry, seen, version, status, actions);
+    tr.append(name, store, phone, device, system, duration, expiry, seen, version, status, actions);
     return tr;
   }
 
@@ -309,8 +320,13 @@
     const items = state.items.filter((client) => {
       if (state.status && client.computed !== state.status) return false;
       if (!query) return true;
-      return [client.name, client.phone, client.storeName, client.deviceId]
-        .some((value) => String(value || '').toLowerCase().includes(query));
+      return [
+        client.name,
+        client.phone,
+        client.storeName,
+        client.deviceId,
+        PLATFORM_LABEL[String(client.platform || '').toLowerCase()],
+      ].some((value) => String(value || '').toLowerCase().includes(query));
     });
 
     const body = $('rows');
