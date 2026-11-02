@@ -138,38 +138,49 @@ export function requestFullSync(): boolean {
   return true;
 }
 
-async function pushLocalSnapshot(): Promise<void> {
+async function pushLocalSnapshot(): Promise<boolean> {
   const s = ensureSocketSync();
-  if (!s?.connected) return;
+  if (!s?.connected) return false;
   try {
     const { BackupService } = await import('@/services/backup/backup.service');
     const payload = await new BackupService().createSyncPayload();
     s.emit('push', payload);
+    return true;
   } catch {
     /* snapshot unavailable: retry on the next local write */
+    return false;
   }
 }
 
 function applyRemote(payload: unknown): void {
   applyQueue = applyQueue
     .then(async () => {
-      if (!payload || typeof payload !== 'object') return;
-      const at = Number((payload as { exportedAt?: number }).exportedAt ?? 0);
-      if (at && at <= lastAppliedAt) return;
-      const apply = syncApplier;
-      if (apply) {
-        try {
-          await withSuppressedLocalWrites(() => apply(payload));
-        } catch {
-          /* keep local data when the peer snapshot is unusable */
+      if (!payload || typeof payload !== 'object') {
+        if (pushAfterNextApply) {
+          pushAfterNextApply = false;
+          await pushLocalSnapshot();
         }
-        if (at) lastAppliedAt = at;
+        return;
+      }
+      const at = Number((payload as { exportedAt?: number }).exportedAt ?? 0);
+      // A snapshot we already hold is not a reason to stay silent: the relay has
+      // no newer copy, and our own data still has to reach the peers.
+      if (!at || at > lastAppliedAt) {
+        const apply = syncApplier;
+        if (apply) {
+          try {
+            await withSuppressedLocalWrites(() => apply(payload));
+          } catch {
+            /* keep local data when the peer snapshot is unusable */
+          }
+          if (at) lastAppliedAt = at;
+        }
+        appliedListeners.forEach((cb) => cb());
       }
       if (pushAfterNextApply) {
         pushAfterNextApply = false;
         await pushLocalSnapshot();
       }
-      appliedListeners.forEach((cb) => cb());
     })
     .catch(() => {
       pushAfterNextApply = false;
