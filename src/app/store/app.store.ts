@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Locale } from '@/i18n';
+import type { AccentId } from '@/config/theme';
+import { DEFAULT_ACCENT } from '@/config/theme';
 import type { Permission } from '@/types';
 
 interface AuthUser {
@@ -15,6 +17,7 @@ export interface AppState {
   permissions: Permission[];
   locale: Locale;
   darkMode: boolean;
+  accent: AccentId;
   currency: string;
   storeName: string;
 
@@ -22,6 +25,7 @@ export interface AppState {
   hasPermission(p: Permission): boolean;
   setLocale(l: Locale): void;
   setDarkMode(v: boolean): void;
+  setAccent(a: AccentId): void;
   setCurrency(c: string): void;
   setStoreName(n: string): void;
 }
@@ -33,6 +37,7 @@ export const useAppStore = create<AppState>()(
       permissions: [],
       locale: 'ar',
       darkMode: false,
+      accent: DEFAULT_ACCENT,
       currency: 'DZD',
       storeName: '',
 
@@ -40,9 +45,10 @@ export const useAppStore = create<AppState>()(
       hasPermission: (p) => get().permissions.includes(p),
       setLocale: (locale) => set({ locale }),
       setDarkMode: (darkMode) => set({ darkMode }),
+      setAccent: (accent) => set({ accent }),
       setCurrency: (currency) => set({ currency }),
       setStoreName: (storeName) => set({ storeName }),
     }),
-    { name: 'app-ui-prefs', partialize: (s) => ({ locale: s.locale, darkMode: s.darkMode, authUser: s.authUser, permissions: s.permissions, currency: s.currency, storeName: s.storeName }) },
+    { name: 'app-ui-prefs', partialize: (s) => ({ locale: s.locale, darkMode: s.darkMode, accent: s.accent, authUser: s.authUser, permissions: s.permissions, currency: s.currency, storeName: s.storeName }) },
   ),
 );

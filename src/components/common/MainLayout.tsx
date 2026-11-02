@@ -5,6 +5,7 @@ import { getDb } from '@/database/db';
 import { useAppStore } from '@/app/store/app.store';
 import { useT } from '@/hooks/useT';
 import { Icon, LogoMark, type IconName } from '@/components/icons';
+import { ACCENTS } from '@/config/theme';
 import { endOfDay, formatMoney, startOfDay } from '@/utils/format';
 import type { Permission } from '@/types';
 
@@ -345,11 +346,13 @@ export function MainLayout() {
   const hasPermission = useAppStore((s) => s.hasPermission);
   const darkMode = useAppStore((s) => s.darkMode);
   const setDarkMode = useAppStore((s) => s.setDarkMode);
+  const accent = useAppStore((s) => s.accent);
+  const setAccent = useAppStore((s) => s.setAccent);
   const setAuth = useAppStore((s) => s.setAuth);
   const currency = useAppStore((s) => s.currency);
   const stats = useLiveStats();
 
-  const [menu, setMenu] = useState<'none' | 'bell' | 'user'>('none');
+  const [menu, setMenu] = useState<'none' | 'bell' | 'user' | 'accent'>('none');
   const [moreOpen, setMoreOpen] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
   const isDesktop = useMemo(() => typeof window !== 'undefined' && !!window.desktop?.isDesktop, []);
@@ -483,6 +486,46 @@ export function MainLayout() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenu(menu === 'accent' ? 'none' : 'accent')}
+              aria-label={t('accentColor')}
+              title={t('accentColor')}
+              aria-expanded={menu === 'accent'}
+              className={`grid h-9 w-9 place-items-center rounded-md transition-colors hover:bg-white/10 hover:text-white ${menu === 'accent' ? 'bg-white/10 text-white' : ''}`}
+            >
+              <span
+                className="h-5 w-5 rounded-full ring-2 ring-white/25"
+                style={{ background: 'linear-gradient(140deg, rgb(var(--brand-rgb)), rgb(var(--purple-rgb)))' }}
+              />
+            </button>
+            {menu === 'accent' && (
+              <div className="panel anim-pop absolute end-0 top-11 z-50 w-60 rounded-lg border border-line p-3 shadow-3">
+                <p className="mb-2.5 text-[0.82rem] font-black text-ink">{t('accentColor')}</p>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {ACCENTS.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setAccent(a.id)}
+                      title={t(a.labelKey)}
+                      aria-label={t(a.labelKey)}
+                      aria-pressed={a.id === accent}
+                      className={`grid h-8 place-items-center rounded-full transition-transform hover:scale-105 ${a.id === accent ? 'ring-2 ring-ink/60' : ''}`}
+                    >
+                      <span
+                        className="h-6 w-6 rounded-full"
+                        style={{ background: `linear-gradient(140deg, rgb(${a.brand}), rgb(${a.purple}))` }}
+                      />
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2.5 text-[0.68rem] font-semibold text-ink-muted">{t('accentColorHint')}</p>
               </div>
             )}
           </div>

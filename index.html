@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ar" dir="rtl" data-theme="light">
+<html lang="ar" dir="rtl" data-theme="light" data-accent="blue">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5, interactive-widget=resizes-content" />
@@ -32,6 +32,16 @@
       @media (prefers-color-scheme: dark) { #boot .t { color: #8b93a5; } }
       @keyframes bp { 0%, 100% { transform: scale(1); opacity: 1 } 50% { transform: scale(.9); opacity: .7 } }
     </style>
+    <script>
+      // Paint the saved accent before the bundle boots, so a recoloured app never
+      // flashes the default blue on start-up.
+      try {
+        const prefs = JSON.parse(localStorage.getItem('app-ui-prefs') || '{}');
+        if (prefs && prefs.state && prefs.state.accent) {
+          document.documentElement.setAttribute('data-accent', prefs.state.accent);
+        }
+      } catch (e) { /* first run or private mode: keep the default */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>

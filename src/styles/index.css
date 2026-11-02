@@ -99,6 +99,143 @@
   --bg-veil: 1;
 }
 
+/* ===================================================================
+   Accent palettes — data-accent is set on <html> by useApplyTheme.
+   Each accent repaints the brand and the secondary gradient hue; the
+   dark variant needs its own lighter triplets, so both are listed.
+   Keep the preview swatches in src/config/theme.ts in step with these
+   values; the runtime colors live here, not in JS.
+   =================================================================== */
+[data-accent='blue'] {
+  --brand-rgb: 37 99 235;
+  --brand-hover-rgb: 29 78 216;
+  --bg-accent-rgb: 37 99 235;
+  --purple-rgb: 124 58 247;
+}
+[data-theme='dark'][data-accent='blue'] {
+  --brand-rgb: 79 124 255;
+  --brand-hover-rgb: 99 141 255;
+  --bg-accent-rgb: 79 124 255;
+  --purple-rgb: 167 139 250;
+}
+
+[data-accent='violet'] {
+  --brand-rgb: 124 58 247;
+  --brand-hover-rgb: 109 40 217;
+  --bg-accent-rgb: 124 58 247;
+  --purple-rgb: 219 39 119;
+}
+[data-theme='dark'][data-accent='violet'] {
+  --brand-rgb: 167 139 250;
+  --brand-hover-rgb: 196 181 253;
+  --bg-accent-rgb: 167 139 250;
+  --purple-rgb: 236 72 153;
+}
+
+[data-accent='green'] {
+  --brand-rgb: 21 128 61;
+  --brand-hover-rgb: 22 101 52;
+  --bg-accent-rgb: 21 128 61;
+  --purple-rgb: 13 148 136;
+}
+[data-theme='dark'][data-accent='green'] {
+  --brand-rgb: 34 197 94;
+  --brand-hover-rgb: 74 222 128;
+  --bg-accent-rgb: 34 197 94;
+  --purple-rgb: 45 212 191;
+}
+
+[data-accent='teal'] {
+  --brand-rgb: 13 148 136;
+  --brand-hover-rgb: 15 118 110;
+  --bg-accent-rgb: 13 148 136;
+  --purple-rgb: 2 132 199;
+}
+[data-theme='dark'][data-accent='teal'] {
+  --brand-rgb: 20 184 166;
+  --brand-hover-rgb: 45 212 191;
+  --bg-accent-rgb: 20 184 166;
+  --purple-rgb: 56 189 248;
+}
+
+[data-accent='crimson'] {
+  --brand-rgb: 190 24 93;
+  --brand-hover-rgb: 159 18 79;
+  --bg-accent-rgb: 190 24 93;
+  --purple-rgb: 147 51 234;
+}
+[data-theme='dark'][data-accent='crimson'] {
+  --brand-rgb: 244 63 94;
+  --brand-hover-rgb: 251 113 133;
+  --bg-accent-rgb: 244 63 94;
+  --purple-rgb: 192 132 252;
+}
+
+[data-accent='copper'] {
+  --brand-rgb: 194 91 2;
+  --brand-hover-rgb: 154 70 10;
+  --bg-accent-rgb: 194 91 2;
+  --purple-rgb: 236 72 153;
+}
+[data-theme='dark'][data-accent='copper'] {
+  --brand-rgb: 249 115 22;
+  --brand-hover-rgb: 251 146 60;
+  --bg-accent-rgb: 249 115 22;
+  --purple-rgb: 244 114 182;
+}
+
+[data-accent='indigo'] {
+  --brand-rgb: 79 70 229;
+  --brand-hover-rgb: 67 56 202;
+  --bg-accent-rgb: 79 70 229;
+  --purple-rgb: 139 92 246;
+}
+[data-theme='dark'][data-accent='indigo'] {
+  --brand-rgb: 99 102 241;
+  --brand-hover-rgb: 129 140 248;
+  --bg-accent-rgb: 99 102 241;
+  --purple-rgb: 167 139 250;
+}
+
+[data-accent='cyan'] {
+  --brand-rgb: 3 105 161;
+  --brand-hover-rgb: 2 86 140;
+  --bg-accent-rgb: 3 105 161;
+  --purple-rgb: 124 58 247;
+}
+[data-theme='dark'][data-accent='cyan'] {
+  --brand-rgb: 2 132 199;
+  --brand-hover-rgb: 14 165 233;
+  --bg-accent-rgb: 2 132 199;
+  --purple-rgb: 125 211 252;
+}
+
+[data-accent='gold'] {
+  --brand-rgb: 161 98 7;
+  --brand-hover-rgb: 133 77 14;
+  --bg-accent-rgb: 161 98 7;
+  --purple-rgb: 219 39 119;
+}
+[data-theme='dark'][data-accent='gold'] {
+  --brand-rgb: 180 83 9;
+  --brand-hover-rgb: 217 119 6;
+  --bg-accent-rgb: 180 83 9;
+  --purple-rgb: 244 114 182;
+}
+
+[data-accent='graphite'] {
+  --brand-rgb: 51 65 85;
+  --brand-hover-rgb: 30 41 59;
+  --bg-accent-rgb: 51 65 85;
+  --purple-rgb: 100 116 139;
+}
+[data-theme='dark'][data-accent='graphite'] {
+  --brand-rgb: 71 85 105;
+  --brand-hover-rgb: 100 116 139;
+  --bg-accent-rgb: 71 85 105;
+  --purple-rgb: 148 163 184;
+}
+
 /* Direct-use aliases for hand-written CSS and inline styles */
 :root {
   --bg: rgb(var(--bg-rgb));

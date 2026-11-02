@@ -15,6 +15,7 @@ import { BackupService } from '@/services/backup/backup.service';
 import { AutoBackupService } from '@/services/backup/autoBackup.service';
 import { LanSyncService } from '@/services/sync/lan-sync.service';
 import { getLicenseInfo, appVersion } from '@/services/license/license.service';
+import { ACCENTS } from '@/config/theme';
 import { exportToXlsx } from '@/utils/export';
 import { formatDateTime, formatMoney } from '@/utils/format';
 import { LOCALE_OPTIONS, type Locale } from '@/i18n';
@@ -340,10 +341,12 @@ function AppearanceSection() {
   const { t } = useT();
   const locale = useAppStore((s) => s.locale);
   const darkMode = useAppStore((s) => s.darkMode);
+  const accent = useAppStore((s) => s.accent);
   const currency = useAppStore((s) => s.currency);
   const storeName = useAppStore((s) => s.storeName);
   const setLocale = useAppStore((s) => s.setLocale);
   const setDarkMode = useAppStore((s) => s.setDarkMode);
+  const setAccent = useAppStore((s) => s.setAccent);
 
   const changeLocale = (value: Locale) => {
     setLocale(value);
@@ -376,6 +379,36 @@ function AppearanceSection() {
               </div>
             </div>
             <Toggle checked={darkMode} onChange={changeDark} label={t('darkMode')} />
+          </div>
+
+          <div className="sm:col-span-2">
+            <Field label={t('accentColor')} hint={t('accentColorHint')}>
+              <div className="flex flex-wrap gap-2">
+                {ACCENTS.map((a) => {
+                  const selected = a.id === accent;
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setAccent(a.id)}
+                      aria-pressed={selected}
+                      className={`flex h-9 items-center gap-2 rounded-lg border px-2.5 transition-colors ${
+                        selected
+                          ? 'border-brand bg-brand/10 text-brand'
+                          : 'border-line bg-surface-2 text-ink-2 hover:border-line-strong hover:bg-surface-3'
+                      }`}
+                    >
+                      <span
+                        className="h-5 w-5 shrink-0 rounded-full ring-1 ring-white/25"
+                        style={{ background: `linear-gradient(140deg, rgb(${a.brand}), rgb(${a.purple}))` }}
+                      />
+                      <span className="text-[0.74rem] font-bold">{t(a.labelKey)}</span>
+                      {selected && <Icon name="check" size={13} strokeWidth={2.6} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
           </div>
         </div>
       </Card>
@@ -859,15 +892,17 @@ function BackupSection() {
         );
       } else {
         const rows = await db.sales.toArray();
+        const names = new Map((await db.customers.toArray()).map((c) => [c.id, c.fullName]));
         exportToXlsx(
           rows.map((s) => ({
             [t('invoiceNumber')]: s.invoiceNumber,
+            [t('customer')]: (s.customerId ? names.get(s.customerId) : undefined) ?? t('walkInCustomer'),
             [t('date')]: formatDateTime(s.saleDate, 'fr-DZ'),
-            [t('saleType')]: s.saleType,
+            [t('saleType')]: s.saleType === 'CASH' ? t('cashSale') : t('installmentSale'),
             [t('total')]: s.totalAmount,
             [t('paid')]: s.paidAmount,
             [t('remaining')]: s.remainingAmount,
-            [t('status')]: s.status,
+            [t('status')]: t(`status_${s.status}`),
           })),
           `sales-${date}.xlsx`,
           t('sales'),
