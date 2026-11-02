@@ -4,6 +4,7 @@ import { round2 } from '@/utils/format';
 import type { Sale, SaleItem, InstallmentPlan, Installment, Payment, SaleType } from '@/types';
 import { calculateInstallmentPlan } from '@/services/installments/calculator';
 import type { PlanCalculation } from '@/services/installments/calculator';
+import { currentActor } from '@/services/operations.service';
 
 export interface CartLine {
   productId: string;
@@ -277,7 +278,7 @@ export class SaleService {
 
   private async audit(userId: string, action: string, entity: string, entityId: string, oldValue: unknown, newValue: unknown): Promise<void> {
     await this.db.auditLogs.add({
-      id: newId(), userId, action, entity, entityId, oldValue, newValue, createdAt: Date.now(),
+      id: newId(), userId, username: currentActor().username, action, entity, entityId, oldValue, newValue, createdAt: Date.now(),
     });
   }
 }

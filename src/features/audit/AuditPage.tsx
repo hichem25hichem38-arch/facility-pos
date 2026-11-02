@@ -24,6 +24,14 @@ const ACTION_ICON: Record<string, IconName> = {
 
 const PAGE_SIZE = 25;
 
+/**
+ * New rows carry the actor display name because the users table is local to each
+ * device and is deliberately not synced. Older rows still resolve from the list.
+ */
+function actorName(log: AuditLog, names: Map<string, string>): string {
+  return log.username ?? names.get(log.userId ?? '') ?? '';
+}
+
 export function AuditPage() {
   const { t, locale } = useT();
   const [term, setTerm] = useState('');
@@ -33,6 +41,8 @@ export function AuditPage() {
   const [selected, setSelected] = useState<AuditLog | null>(null);
 
   const logs = useLiveQuery(() => getDb().auditLogs.orderBy('createdAt').reverse().limit(2000).toArray(), [], []);
+  const users = useLiveQuery(() => getDb().users.toArray(), [], []);
+  const names = useMemo(() => new Map(users.map((u) => [u.id, u.displayName])), [users]);
 
   const label = (prefix: string, value: string) => {
     const key = `${prefix}${value}`;
@@ -50,13 +60,13 @@ export function AuditPage() {
       if (entity !== 'ALL' && l.entity !== entity) return false;
       if (!q) return true;
       return (
-        (l.username ?? '').toLowerCase().includes(q) ||
+        actorName(l, names).toLowerCase().includes(q) ||
         l.action.toLowerCase().includes(q) ||
         l.entity.toLowerCase().includes(q) ||
         (l.entityId ?? '').toLowerCase().includes(q)
       );
     });
-  }, [logs, term, action, entity]);
+  }, [logs, term, action, entity, names]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const current = Math.min(page, pages);
@@ -120,9 +130,9 @@ export function AuditPage() {
                 <Td>
                   <span className="flex items-center gap-2">
                     <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-surface-3 text-[0.68rem] font-black text-ink-2">
-                      {(log.username ?? '?').charAt(0).toUpperCase()}
+                      {(actorName(log, names).charAt(0) || '?').toUpperCase()}
                     </span>
-                    <span className="truncate font-bold">{log.username ?? '—'}</span>
+                    <span className="truncate font-bold">{actorName(log, names) || '—'}</span>
                   </span>
                 </Td>
                 <Td>
@@ -160,7 +170,7 @@ export function AuditPage() {
         {selected && (
           <div className="space-y-4">
             <div className="grid gap-2 sm:grid-cols-2">
-              <InfoTile label={t('users')} value={selected.username ?? '—'} />
+              <InfoTile label={t('users')} value={actorName(selected, names) || '—'} />
               <InfoTile label={t('createdAt')} value={formatDateTime(selected.createdAt, locale === 'ar' ? 'ar-DZ' : 'fr-DZ')} />
             </div>
 

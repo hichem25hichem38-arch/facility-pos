@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon, type IconName } from '@/components/icons';
 import { useToastStore } from '@/app/store/toast.store';
 import { useT } from '@/hooks/useT';
@@ -607,7 +608,12 @@ export function Modal({
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  /*
+   * Portaled to <body>: the page shell animates with a transform, and a transformed
+   * ancestor makes position:fixed behave like position:absolute — which pushes the
+   * top of the dialog (title and first fields) above the viewport.
+   */
+  return createPortal(
     <div
       className="fixed inset-0 z-[1000] flex items-end justify-center bg-overlay/60 p-0 backdrop-blur-sm sm:items-center sm:p-6"
       onMouseDown={(e) => {
@@ -619,7 +625,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`anim-pop flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-xl border border-line bg-surface shadow-3 sm:rounded-xl ${
+        className={`anim-pop flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-t-xl border border-line bg-surface shadow-3 sm:max-h-[calc(100dvh-3rem)] sm:rounded-xl ${
           wide ? 'sm:max-w-3xl' : 'sm:max-w-lg'
         }`}
       >
@@ -642,7 +648,8 @@ export function Modal({
           </footer>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Badge, Button, Field, IconButton, Input, Select } from '@/components/ui';
 import { Icon, LogoMark } from '@/components/icons';
 import { useT } from '@/hooks/useT';
@@ -60,6 +60,7 @@ function errorKey(error: unknown): string {
 
 export function AdminGeneratePage() {
   const { t, locale } = useT();
+  const navigate = useNavigate();
   const setLocale = useAppStore((s) => s.setLocale);
   const darkMode = useAppStore((s) => s.darkMode);
   const setDarkMode = useAppStore((s) => s.setDarkMode);
@@ -275,8 +276,14 @@ export function AdminGeneratePage() {
 
             <div className="mt-5 border-t border-line pt-4">
               <Link
-                to="/license"
+                to="/"
                 className="flex items-center justify-center gap-1.5 text-[0.76rem] font-bold text-ink-muted transition-colors hover:text-brand"
+              >
+                <Icon name="chevron-start" size={14} /> {t('dashboard')}
+              </Link>
+              <Link
+                to="/license"
+                className="mt-2 flex items-center justify-center gap-1.5 text-[0.76rem] font-bold text-ink-muted transition-colors hover:text-brand"
               >
                 <Icon name="chevron-start" size={14} /> {t('activationPageLink')}
               </Link>
@@ -292,7 +299,10 @@ export function AdminGeneratePage() {
                 <h1 className="text-[1.2rem] font-black leading-tight text-ink">{t('adminGenTitle')}</h1>
                 <p className="mt-1 text-[0.76rem] font-semibold text-ink-muted">{t('adminGenSubtitle')}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="secondary" icon="chevron-start" onClick={() => navigate('/')}>
+                  {t('dashboard')}
+                </Button>
                 <Link
                   to="/license"
                   className="inline-flex h-9 items-center gap-1.5 rounded-md border border-line bg-surface-2 px-3 text-[0.78rem] font-bold text-ink transition-colors hover:border-line-strong hover:bg-surface-3"

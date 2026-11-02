@@ -2,6 +2,7 @@ import { getDb, getDeviceId } from '@/database/db';
 import { newId } from '@/utils/helpers';
 import { round2 } from '@/utils/format';
 import { deriveInstallmentStatus } from '@/services/installments/calculator';
+import { currentActor } from '@/services/operations.service';
 import type { Installment, Payment, Sale } from '@/types';
 
 export class PaymentService {
@@ -71,7 +72,7 @@ export class PaymentService {
       await this.refreshSaleState(sale.id);
 
       await this.db.auditLogs.add({
-        id: newId(), userId: input.userId, action: 'RECORD_PAYMENT', entity: 'Payment',
+        id: newId(), userId: input.userId, username: currentActor().username, action: 'RECORD_PAYMENT', entity: 'Payment',
         entityId: payment.id, newValue: { installmentId: installment.id, amount }, createdAt: Date.now(),
       });
 
@@ -111,7 +112,7 @@ export class PaymentService {
       if (saleId) await this.refreshSaleState(saleId);
 
       await this.db.auditLogs.add({
-        id: newId(), userId, action: 'CANCEL_PAYMENT', entity: 'Payment',
+        id: newId(), userId, username: currentActor().username, action: 'CANCEL_PAYMENT', entity: 'Payment',
         entityId: paymentId, oldValue: { amount: payment.amount }, createdAt: Date.now(),
       });
     });
