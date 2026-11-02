@@ -85,11 +85,11 @@ function parseEnvelope(raw: string, status: number): Envelope {
   }
 }
 
-async function viaDesktop(payload: string, vendorToken?: string): Promise<Envelope> {
+async function viaDesktop(action: string, payload: string, vendorToken?: string): Promise<Envelope> {
   const bridge = window.desktop?.licenseRequest;
   if (!bridge) throw new OfflineError('no bridge');
   const result = await bridge({
-    url: API_URL,
+    url: `${API_URL}?action=${encodeURIComponent(action)}`,
     body: payload,
     origin: ACTIVATION_ORIGIN,
     timeoutMs: TIMEOUT_MS,
@@ -156,7 +156,7 @@ async function call(
   const payload = JSON.stringify(body);
   let envelope: Envelope;
   try {
-    if (window.desktop?.licenseRequest) envelope = await viaDesktop(payload, vendorToken);
+    if (window.desktop?.licenseRequest) envelope = await viaDesktop(action, payload, vendorToken);
     else if (isNative()) envelope = await viaCapacitor(action, payload, vendorToken);
     else envelope = await viaFetch(action, payload, vendorToken);
   } catch (error) {
