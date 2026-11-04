@@ -255,7 +255,7 @@ export function AdminGeneratePage() {
   };
 
   return (
-    <div className="relative flex min-h-dvh w-full flex-col overflow-hidden bg-bg">
+    <div className="relative flex h-dvh w-full flex-col overflow-hidden bg-bg">
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-64 opacity-70"
         style={{
@@ -287,9 +287,9 @@ export function AdminGeneratePage() {
         </button>
       </div>
 
-      <main className="relative flex flex-1 items-start justify-center px-4 pb-10 sm:items-center">
+      <main className="scroll-y relative flex min-h-0 flex-1 flex-col items-center px-4 pb-10">
         {!token ? (
-          <div className="panel anim-in w-full max-w-sm rounded-xl border border-line p-7 shadow-2">
+          <div className="panel anim-in my-auto w-full max-w-sm rounded-xl border border-line p-7 shadow-2">
             <div className="flex items-center gap-3">
               <LogoMark size={38} />
               <div className="min-w-0">
@@ -351,7 +351,7 @@ export function AdminGeneratePage() {
             </div>
           </div>
         ) : (
-          <div className="anim-in flex w-full max-w-3xl flex-col gap-4">
+          <div className="anim-in flex my-auto w-full max-w-3xl flex-col gap-4">
             <div className="panel flex flex-wrap items-center gap-3 rounded-xl border border-line p-5 shadow-1">
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand/12 text-brand">
                 <Icon name="key" size={21} />
