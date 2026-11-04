@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Badge, Button, Field, IconButton, Input, Select } from '@/components/ui';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { Badge, Button, ConfirmDialog, Field, IconButton, Input, Select } from '@/components/ui';
 import { Icon, LogoMark } from '@/components/icons';
+import { getDb } from '@/database/db';
 import { useT } from '@/hooks/useT';
 import { useAppStore } from '@/app/store/app.store';
 import { LOCALE_OPTIONS } from '@/i18n';
-import { ActivationError, apiVendorIssue, apiVendorLogin } from '@/services/license/activation.api';
+import { ActivationError, apiVendorIssue, apiVendorList, apiVendorLogin, type VendorClient } from '@/services/license/activation.api';
+import type { IssuedCodeRecord } from '@/types';
 
 /*
  * Vendor key generator. Codes are minted by the hosted activation service, so
@@ -13,16 +16,21 @@ import { ActivationError, apiVendorIssue, apiVendorLogin } from '@/services/lice
  * key and asks the service for a code bound to one device.
  */
 
-const DAY_MS = 86_400_000;
-const MAX_HISTORY = 12;
 const TOKEN_KEY = 'pos.vendor.token';
 
-interface IssuedEntry {
-  code: string;
-  deviceId: string;
-  name: string;
-  days: number;
-  validUntil?: string;
+const CLIENT_STATE: Record<VendorClient['state'], { key: string; tone: 'ok' | 'warn' | 'danger' | 'muted' }> = {
+  active: { key: 'licStateActive', tone: 'ok' },
+  pending: { key: 'licStatePending', tone: 'muted' },
+  expired: { key: 'licStateExpired', tone: 'warn' },
+  revoked: { key: 'licStateRevoked', tone: 'danger' },
+};
+
+function dateText(value: string | number | null | undefined, locale: string): string {
+  if (value == null || value === '') return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? '—'
+    : date.toLocaleDateString(locale === 'ar' ? 'ar-DZ' : locale === 'fr' ? 'fr-DZ' : 'en-GB');
 }
 
 async function copyText(text: string): Promise<void> {
@@ -38,8 +46,8 @@ async function copyText(text: string): Promise<void> {
   }
 }
 
-function errorKey(error: unknown): string {
-  if (!(error instanceof ActivationError)) return 'adminIssueFailed';
+function errorKey(error: unknown, fallback = 'adminIssueFailed'): string {
+  if (!(error instanceof ActivationError)) return fallback;
   switch (error.code) {
     case 'invalid_credentials':
       return 'adminKeyInvalid';
@@ -54,7 +62,7 @@ function errorKey(error: unknown): string {
     case 'unknown':
       return 'adminServerError';
     default:
-      return 'adminIssueFailed';
+      return fallback;
   }
 }
 
@@ -84,10 +92,24 @@ export function AdminGeneratePage() {
   const [customDays, setCustomDays] = useState('45');
   const [formErr, setFormErr] = useState('');
 
-  const [issued, setIssued] = useState<IssuedEntry | null>(null);
-  const [history, setHistory] = useState<IssuedEntry[]>([]);
+  const [issued, setIssued] = useState<IssuedCodeRecord | null>(null);
+  const [saveErr, setSaveErr] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [clients, setClients] = useState<VendorClient[]>([]);
+  const [clientsBusy, setClientsBusy] = useState(false);
+  const [clientsErr, setClientsErr] = useState('');
+  const [clearOpen, setClearOpen] = useState(false);
+
+  /*
+   * The service stores only a hash, so this table is the single place a code
+   * survives the reloads the app performs after a sync or a backup import.
+   */
+  const history = useLiveQuery(
+    () => getDb().issuedCodes.orderBy('createdAt').reverse().toArray(),
+    [],
+    [] as IssuedCodeRecord[],
+  );
 
   const presets = useMemo(
     () => [
@@ -125,6 +147,28 @@ export function AdminGeneratePage() {
     }
   };
 
+  /**
+   * The server keeps every client row, so the list survives reloads and app
+   * restarts — unlike the codes issued here, which the service stores only as a
+   * hash and therefore can show once.
+   */
+  const refreshClients = useCallback(async () => {
+    if (!token) return;
+    setClientsBusy(true);
+    setClientsErr('');
+    try {
+      setClients(await apiVendorList(token));
+    } catch (error) {
+      setClientsErr(errorKey(error, 'adminServerError'));
+    } finally {
+      setClientsBusy(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void refreshClients();
+  }, [refreshClients]);
+
   const issue = async () => {
     const id = deviceId.trim().toUpperCase().replace(/\s+/g, '');
     setFormErr('');
@@ -147,15 +191,24 @@ export function AdminGeneratePage() {
         storeName: storeName.trim(),
         durationDays: Math.round(days),
       });
-      const entry: IssuedEntry = {
+      const record: IssuedCodeRecord = {
         code: result.code,
         deviceId: result.deviceId,
         name: name.trim(),
-        days: result.durationDays,
+        storeName: storeName.trim(),
+        phone: phone.trim(),
+        durationDays: result.durationDays,
         validUntil: result.validUntil ?? undefined,
+        createdAt: Date.now(),
       };
-      setIssued(entry);
-      setHistory((prev) => [entry, ...prev.filter((h) => h.code !== entry.code)].slice(0, MAX_HISTORY));
+      setIssued(record);
+      setSaveErr(false);
+      try {
+        await getDb().issuedCodes.put(record);
+      } catch {
+        setSaveErr(true);
+      }
+      void refreshClients();
     } catch (error) {
       setFormErr(t(errorKey(error)));
     } finally {
@@ -163,14 +216,14 @@ export function AdminGeneratePage() {
     }
   };
 
-  const copy = async (entry: IssuedEntry) => {
-    await copyText(entry.code);
-    setCopiedKey(entry.code);
-    setTimeout(() => setCopiedKey((cur) => (cur === entry.code ? null : cur)), 2000);
+  const copy = async (code: string) => {
+    await copyText(code);
+    setCopiedKey(code);
+    setTimeout(() => setCopiedKey((cur) => (cur === code ? null : cur)), 2000);
   };
 
-  const sendWhatsApp = (entry: IssuedEntry) => {
-    window.open(`https://wa.me/?text=${encodeURIComponent(t('whatsappKeyMessage', { code: entry.code }))}`, '_blank');
+  const sendWhatsApp = (code: string) => {
+    window.open(`https://wa.me/?text=${encodeURIComponent(t('whatsappKeyMessage', { code }))}`, '_blank');
   };
 
   const lock = () => {
@@ -178,7 +231,9 @@ export function AdminGeneratePage() {
     setApiKey('');
     setAuthErr('');
     setIssued(null);
-    setHistory([]);
+    setSaveErr(false);
+    setClients([]);
+    setClientsErr('');
     setDeviceId('');
     setName('');
     setPhone('');
@@ -192,6 +247,12 @@ export function AdminGeneratePage() {
   };
 
   const daysLabel = (days: number) => (days === 0 ? t('keyPermanent') : t('adminDurationDays', { days }));
+
+  /** Deleting here destroys the codes: the service stores only their hashes. */
+  const clearIssuedCodes = () => {
+    void getDb().issuedCodes.clear();
+    setClearOpen(false);
+  };
 
   return (
     <div className="relative flex min-h-dvh w-full flex-col overflow-hidden bg-bg">
@@ -309,6 +370,9 @@ export function AdminGeneratePage() {
                 >
                   <Icon name="chevron-start" size={14} /> {t('activationPageLink')}
                 </Link>
+                <Button variant="secondary" icon="refresh" loading={clientsBusy} onClick={() => void refreshClients()}>
+                  {t('licRefreshClients')}
+                </Button>
                 <Button variant="secondary" icon="lock" onClick={lock}>
                   {t('lock')}
                 </Button>
@@ -403,10 +467,16 @@ export function AdminGeneratePage() {
                         <Icon name="check" size={16} strokeWidth={2.4} className="text-ok" />
                         {t('generatedKey')}
                       </h2>
-                      <Badge tone={issued.days === 0 ? 'ok' : 'info'} icon={issued.days === 0 ? 'shield' : 'clock'}>
-                        {daysLabel(issued.days)}
+                      <Badge tone={issued.durationDays === 0 ? 'ok' : 'info'} icon={issued.durationDays === 0 ? 'shield' : 'clock'}>
+                        {daysLabel(issued.durationDays)}
                       </Badge>
                     </div>
+
+                    {saveErr && (
+                      <p className="anim-pop flex items-center gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-[0.76rem] font-bold text-warn">
+                        <Icon name="alert" size={14} strokeWidth={2.4} /> {t('adminCodeNotSaved')}
+                      </p>
+                    )}
 
                     <code
                       className="mono scroll-y select-all overflow-x-auto rounded-md border border-ok/25 bg-ok/10 px-3 py-3 text-center text-[0.95rem] font-bold tracking-[0.14em] text-ink"
@@ -429,7 +499,7 @@ export function AdminGeneratePage() {
                       {issued.validUntil && (
                         <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface-2 px-3 py-2">
                           <dt className="text-ink-muted">{t('adminCodeValidUntil')}</dt>
-                          <dd className="num text-ink">{new Date(issued.validUntil).toLocaleDateString(locale === 'ar' ? 'ar-DZ' : locale === 'fr' ? 'fr-DZ' : 'en-GB')}</dd>
+                          <dd className="num text-ink">{dateText(issued.validUntil, locale)}</dd>
                         </div>
                       )}
                     </dl>
@@ -438,12 +508,12 @@ export function AdminGeneratePage() {
                       <Button
                         variant="secondary"
                         icon={copiedKey === issued.code ? 'check' : 'copy'}
-                        onClick={() => void copy(issued)}
+                        onClick={() => void copy(issued.code)}
                         className="w-full"
                       >
                         {copiedKey === issued.code ? t('copied') : t('copyKey')}
                       </Button>
-                      <Button variant="secondary" icon="link" onClick={() => sendWhatsApp(issued)} className="w-full">
+                      <Button variant="secondary" icon="link" onClick={() => sendWhatsApp(issued.code)} className="w-full">
                         {t('sendWhatsAppKey')}
                       </Button>
                     </div>
@@ -472,7 +542,7 @@ export function AdminGeneratePage() {
                   <p className="num mt-0.5 text-[0.7rem] font-bold text-ink-muted">{history.length}</p>
                 </div>
                 {history.length > 0 && (
-                  <IconButton icon="trash" label={t('clearHistory')} variant="danger" onClick={() => setHistory([])} />
+                  <IconButton icon="trash" label={t('clearHistory')} variant="danger" onClick={() => setClearOpen(true)} />
                 )}
               </header>
 
@@ -493,7 +563,11 @@ export function AdminGeneratePage() {
                             {h.deviceId}
                           </span>
                           <span aria-hidden="true">•</span>
-                          <span>{daysLabel(h.days)}</span>
+                          <span>{daysLabel(h.durationDays)}</span>
+                          <span aria-hidden="true">•</span>
+                          <span>
+                            {t('licIssued')} <span className="num">{dateText(h.createdAt, locale)}</span>
+                          </span>
                           {h.name && (
                             <>
                               <span aria-hidden="true">•</span>
@@ -508,9 +582,9 @@ export function AdminGeneratePage() {
                           label={t('copyKey')}
                           variant="solid"
                           size={32}
-                          onClick={() => void copy(h)}
+                          onClick={() => void copy(h.code)}
                         />
-                        <IconButton icon="link" label={t('sendWhatsAppKey')} variant="solid" size={32} onClick={() => sendWhatsApp(h)} />
+                        <IconButton icon="link" label={t('sendWhatsAppKey')} variant="solid" size={32} onClick={() => sendWhatsApp(h.code)} />
                       </div>
                     </li>
                   ))}
@@ -518,9 +592,74 @@ export function AdminGeneratePage() {
               )}
             </section>
 
+            <section className="panel rounded-xl border border-line shadow-1">
+              <header className="flex flex-wrap items-center gap-3 border-b border-line px-5 py-3">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-surface-2 text-ink-2">
+                  <Icon name="users" size={16} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-[0.9rem] font-extrabold text-ink">{t('licClients')}</h2>
+                  <p className="num mt-0.5 text-[0.7rem] font-bold text-ink-muted">{clients.length}</p>
+                </div>
+                <Button variant="secondary" icon="refresh" loading={clientsBusy} onClick={() => void refreshClients()}>
+                  {t('licRefreshClients')}
+                </Button>
+              </header>
+
+              {clientsErr ? (
+                <p className="flex items-center gap-2 px-5 py-8 text-[0.78rem] font-semibold text-danger">
+                  <Icon name="alert" size={15} /> {t(clientsErr)}
+                </p>
+              ) : clients.length === 0 ? (
+                <p className="flex items-center justify-center gap-2 px-5 py-8 text-center text-[0.78rem] font-semibold text-ink-muted">
+                  <Icon name="info" size={15} /> {clientsBusy ? t('loading') : t('licClientsEmpty')}
+                </p>
+              ) : (
+                <ul className="divide-y divide-line/70">
+                  {clients.map((c) => {
+                    const state = CLIENT_STATE[c.state];
+                    return (
+                      <li key={c.id || c.deviceId} className="flex flex-wrap items-center gap-3 px-5 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[0.82rem] font-extrabold text-ink">{c.name || c.storeName || '—'}</p>
+                          <p className="mt-1 flex flex-wrap items-center gap-2 text-[0.7rem] font-semibold text-ink-muted">
+                            <span className="mono" dir="ltr">
+                              {c.deviceId}
+                            </span>
+                            <span aria-hidden="true">•</span>
+                            <span>{c.phone ? <span dir="ltr">{c.phone}</span> : c.storeName || '—'}</span>
+                            <span aria-hidden="true">•</span>
+                            <span>{daysLabel(c.durationDays)}</span>
+                            <span aria-hidden="true">•</span>
+                            <span>
+                              {t('licExpiry')} <span className="num">{dateText(c.expiresAt, locale)}</span>
+                            </span>
+                            <span aria-hidden="true">•</span>
+                            <span>
+                              {t('licLastSeen')} <span className="num">{dateText(c.lastSeenAt, locale)}</span>
+                            </span>
+                          </p>
+                        </div>
+                        <Badge tone={state.tone}>{t(state.key)}</Badge>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+
             <p className="flex items-center justify-center gap-2 text-center text-[0.7rem] font-semibold text-ink-muted">
               <Icon name="wifi" size={14} /> {t('adminOnlineNote')}
             </p>
+
+            <ConfirmDialog
+              open={clearOpen}
+              onClose={() => setClearOpen(false)}
+              onConfirm={clearIssuedCodes}
+              title={t('clearHistory')}
+              message={t('adminClearCodesConfirm')}
+              confirmLabel={t('confirm')}
+            />
           </div>
         )}
       </main>

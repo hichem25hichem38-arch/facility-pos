@@ -4,7 +4,7 @@ import { withSuppressedLocalWrites } from './sync-state';
 import type { SyncTombstone } from '@/types';
 
 /** Never accepted from a peer: it could replace the admin account. */
-const BLOCKED_TABLES = new Set(['users', 'userCredentials', 'roles']);
+const BLOCKED_TABLES = new Set(['users', 'userCredentials', 'roles', 'issuedCodes']);
 /** Device-owned settings that must not be overwritten by another device. */
 const BLOCKED_SETTING_KEYS = new Set([
   'deviceId',

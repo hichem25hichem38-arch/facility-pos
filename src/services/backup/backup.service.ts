@@ -9,6 +9,8 @@ export interface BackupPayload {
 
 /** Tables that must never leave this device (accounts and password hashes). */
 const SENSITIVE_TABLES = new Set(['users', 'userCredentials', 'roles']);
+/** Vendor codes: not exported, not synced, not restorable — this device only. */
+const DEVICE_ONLY_TABLES = new Set(['issuedCodes']);
 /** Settings rows owned by a single device; sharing them breaks licensing. */
 const LOCAL_SETTING_KEYS = new Set([
   'deviceId',
@@ -32,6 +34,7 @@ export class BackupService {
     const db = getDb();
     const tables: Record<string, unknown[]> = {};
     for (const name of db.tables.map((t) => t.name)) {
+      if (DEVICE_ONLY_TABLES.has(name)) continue;
       const rows = await db.table(name).toArray();
       // Auto-backup archives live in `settings`; embedding them would make each
       // new backup contain all previous ones (unbounded growth).

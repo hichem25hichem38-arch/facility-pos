@@ -171,6 +171,22 @@ export interface SyncTombstone {
   deletedAt: number;
 }
 
+/**
+ * A code the vendor console minted, kept on this device only. The activation
+ * service stores a hash and a 4-character prefix, so this row is the single
+ * place the full text survives an app reload.
+ */
+export interface IssuedCodeRecord {
+  code: string;
+  deviceId: string;
+  name: string;
+  storeName: string;
+  phone: string;
+  durationDays: number;
+  validUntil?: string;
+  createdAt: number;
+}
+
 export type Permission =
   | 'products.view' | 'products.create' | 'products.update' | 'products.delete'
   | 'inventory.view' | 'inventory.adjust'

@@ -12,7 +12,7 @@ let pairingToken = '';
  * Tables that must never travel over the LAN: a peer on the Wi-Fi could
  * otherwise replace the admin account or its password hash.
  */
-const SENSITIVE_TABLES = new Set(['users', 'userCredentials', 'roles']);
+const SENSITIVE_TABLES = new Set(['users', 'userCredentials', 'roles', 'issuedCodes']);
 /** Settings keys owned by this device and therefore non-transferable. */
 const LOCAL_SETTING_KEYS = new Set([
   'deviceId',

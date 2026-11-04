@@ -19,7 +19,7 @@ const LOCAL_SETTING_KEYS = new Set([
 ]);
 
 /** Never synced, so no tombstone and no push for their writes. */
-const LOCAL_TABLES = new Set(['users', 'userCredentials', 'roles', 'syncTombstones']);
+const LOCAL_TABLES = new Set(['users', 'userCredentials', 'roles', 'syncTombstones', 'issuedCodes']);
 
 /** How long a local edit waits before its snapshot is pushed. */
 const PUSH_DEBOUNCE_MS = 6000;

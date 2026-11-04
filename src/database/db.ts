@@ -3,7 +3,7 @@ import { DEVICE_ID_KEY } from '@/constants';
 import type {
   Product, Category, Customer, Sale, SaleItem, InstallmentPlan,
   Installment, Payment, InventoryTransaction, User, UserCredential,
-  Role, AuditLog, StoreSettings, SyncTombstone,
+  Role, AuditLog, StoreSettings, SyncTombstone, IssuedCodeRecord,
 } from '@/types';
 
 export class PosDatabase extends Dexie {
@@ -22,6 +22,7 @@ export class PosDatabase extends Dexie {
   auditLogs!: Table<AuditLog, string>;
   settings!: Table<StoreSettings, string>;
   syncTombstones!: Table<SyncTombstone, string>;
+  issuedCodes!: Table<IssuedCodeRecord, string>;
 
   constructor() {
     super('installment-pos');
@@ -44,6 +45,10 @@ export class PosDatabase extends Dexie {
     // v2: deletions must reach the other devices too.
     this.version(2).stores({
       syncTombstones: 'id, tableName, deletedAt',
+    });
+    // v3: vendor codes live here and nowhere else — the service keeps only a hash.
+    this.version(3).stores({
+      issuedCodes: '&code, deviceId, createdAt',
     });
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { apiActivate, apiVendorIssue, apiVendorLogin } from '@/services/license/activation.api';
+import { apiActivate, apiVendorIssue, apiVendorList, apiVendorLogin } from '@/services/license/activation.api';
 
 /*
  * The desktop transport hands the URL to the Electron main process, which only
@@ -62,5 +62,40 @@ describe('desktop activation transport', () => {
     const calls = stubDesktopBridge(REPLIES);
     await apiVendorLogin('VND-SAMPLE-KEY');
     expect(new URL(calls[0].url).pathname).toBe('/functions/v1/app');
+  });
+
+  /** The console list is the durable view of what was issued, so its rows are read defensively. */
+  it('lists server clients and falls back to pending on an unknown state', async () => {
+    const calls = stubDesktopBridge([
+      {
+        ok: true,
+        items: [
+          {
+            id: 'cl-1',
+            deviceId: 'PC-1',
+            name: 'عميل',
+            storeName: 'محل',
+            phone: '0555123456',
+            durationDays: 30,
+            expiresAt: '2026-12-01T00:00:00.000Z',
+            lastSeenAt: null,
+            platform: 'windows',
+            appVersion: '1.0.12',
+            computed: 'active',
+          },
+          { deviceId: 'POS-2', status: 'pending' },
+          'not-a-row',
+        ],
+        stats: { total: 3 },
+        total: 3,
+      },
+    ]);
+
+    const clients = await apiVendorList('SES-1');
+    expect(calls[0].url).toContain('?action=vendor%2Flist');
+    expect(calls[0].vendorToken).toBe('SES-1');
+    expect(clients[0]).toMatchObject({ deviceId: 'PC-1', state: 'active', durationDays: 30, lastSeenAt: null });
+    expect(clients[1]).toMatchObject({ deviceId: 'POS-2', state: 'pending', name: '', durationDays: 0 });
+    expect(clients).toHaveLength(2);
   });
 });

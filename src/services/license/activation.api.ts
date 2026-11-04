@@ -247,3 +247,60 @@ export async function apiVendorIssue(token: string, input: IssueCodeInput): Prom
     clientId: typeof data.clientId === 'string' ? data.clientId : '',
   };
 }
+
+/** One client row as the activation service reports it. */
+export interface VendorClient {
+  id: string;
+  deviceId: string;
+  name: string;
+  storeName: string;
+  phone: string;
+  durationDays: number;
+  expiresAt: string | null;
+  lastSeenAt: string | null;
+  platform: string;
+  appVersion: string;
+  state: 'active' | 'pending' | 'expired' | 'revoked';
+}
+
+function textOf(value: unknown): string {
+  return typeof value === 'string' ? value : value == null ? '' : String(value);
+}
+
+function isoOf(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null;
+}
+
+const CLIENT_STATES: VendorClient['state'][] = ['active', 'pending', 'expired', 'revoked'];
+
+/**
+ * The console list is the only durable view of what was issued: a code itself is
+ * shown once at issue time and the service stores only its hash. Rows come from
+ * the network, so every field is read defensively.
+ */
+export async function apiVendorList(token: string): Promise<VendorClient[]> {
+  const data = await call('vendor/list', {}, token);
+  if (!Array.isArray(data.items)) return [];
+  const clients: VendorClient[] = [];
+  for (const raw of data.items) {
+    const row = asRecord(raw);
+    const deviceId = textOf(row?.deviceId);
+    const id = textOf(row?.id);
+    if (!row || (!deviceId && !id)) continue;
+    const computed = textOf(row.computed) as VendorClient['state'];
+    clients.push({
+      id,
+      deviceId,
+      name: textOf(row.name),
+      storeName: textOf(row.storeName),
+      phone: textOf(row.phone),
+      durationDays: Number(row.durationDays) || 0,
+      expiresAt: isoOf(row.expiresAt),
+      lastSeenAt: isoOf(row.lastSeenAt),
+      platform: textOf(row.platform),
+      appVersion: textOf(row.appVersion),
+      state: CLIENT_STATES.includes(computed) ? computed : 'pending',
+    });
+  }
+  return clients;
+}
